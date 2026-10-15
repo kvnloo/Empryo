@@ -41,8 +41,11 @@ describe("isTsJsProject cache isolation", () => {
 
   test("normalizes equivalent workspace paths to the same cache key", async () => {
     const { ts } = makeWorkspaces();
-    expect(await isTsJsProject(join(ts, "."))).toBe(true);
+    expect(await isTsJsProject(`${ts}/.`)).toBe(true);
+    rmSync(join(ts, "package.json"));
     expect(await isTsJsProject(ts)).toBe(true);
+    __resetNudgeState();
+    expect(await isTsJsProject(ts)).toBe(false);
   });
 
   test("reset invalidates cached classifications", async () => {
