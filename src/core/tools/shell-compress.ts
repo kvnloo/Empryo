@@ -26,6 +26,7 @@ function collapseRepeated(lines: string[]): string[] {
     // Don't collapse stack frames or our own summary markers
     if (
       STACK_FRAME_RE.test(line) ||
+      FAILURE_DETAIL_RE.test(line) ||
       (line.includes("... ") && (line.includes("more frames") || line.includes("omitted")))
     ) {
       if (repeatCount > 0) flush();
@@ -73,6 +74,11 @@ const PASS_LINE_RE =
 // Progress bars, spinners, download indicators
 const NOISE_RE =
   /^\s*[\\/|─━░▓█▒■□◻◼⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷]+\s*$|^\s*\d+%\s*[|█▓░]+|^(Downloading|Fetching|Installing|Resolving|Compiling)\b.*\.\.\./;
+
+// Failure details often differ only by numbers (file paths, symbol names, line numbers).
+// Never normalize those into one "similar lines" marker or actionable errors disappear.
+const FAILURE_DETAIL_RE =
+  /(?:^|[\\s:])(?:error|fatal|fail|failed|failure|exception|panic)\\b|\\b[A-Za-z]+Error\\b|[✗✘❌]/i;
 
 const MAX_STACK_FRAMES = 5;
 const MAX_PASS_LINES = 3;
