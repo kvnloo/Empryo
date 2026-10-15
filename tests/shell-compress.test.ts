@@ -314,12 +314,15 @@ describe("compressShellOutput", () => {
     });
   });
 
+  // ── Edge Cases ────────────────────────────────────────────────────────
+
+  describe("edge cases", () => {
     test("preserves distinct compiler errors that differ only by digits", () => {
       const errors = Array.from(
         { length: 25 },
         (_, i) => `src/feature${i}.ts(${i + 1},1): error TS2304: Cannot find name 'missing${i}'.`,
       );
-      const raw = ["Checking project...", ...errors, "25 errors found"].join("\\n");
+      const raw = ["Checking project...", ...errors, "25 errors found"].join("\n");
       const out = compressShellOutput(raw);
       for (const error of errors) expect(out).toContain(error);
       expect(out).not.toContain("more similar lines");
@@ -334,14 +337,11 @@ describe("compressShellOutput", () => {
         { length: 12 },
         (_, i) => `✗ FAIL test_case_${i}: expected ${i}, received ${i + 1}`,
       );
-      const out = compressShellOutput(["Start", ...warnings, ...failures, "12 failed"].join("\\n"));
+      const out = compressShellOutput(["Start", ...warnings, ...failures, "12 failed"].join("\n"));
       expect(out).toContain("more similar lines");
       for (const error of failures) expect(out).toContain(error);
     });
 
-  // ── Edge Cases ────────────────────────────────────────────────────────
-
-  describe("edge cases", () => {
     test("preserves error-only output (no passes to compress)", () => {
       const raw = [
         "ERROR: Build failed",
