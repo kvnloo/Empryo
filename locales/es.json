@@ -44,7 +44,7 @@
   "common.auth.waiting-for-device-code": "Esperando autorización. Introduce el código {code} en el navegador.",
   "common.cache-already-warm": "La caché ya está preparada.",
   "common.cache-awaiting-use": "Esperando uso de la caché",
-  "common.cache-estimate-elapsed": "Estimación agotada",
+  "common.cache-estimate-elapsed": "Tiempo estimado transcurrido",
   "common.cache-estimate-note": "Ventana estimada. El proveedor puede conservar la caché durante más tiempo.",
   "common.cache-prewarm-unavailable": "No se puede precalentar la caché para esta solicitud.",
   "common.cache-refresh-rule": "Se actualiza cuando se confirma la reutilización o escritura de la caché, incluidos los pasos de herramientas.",
