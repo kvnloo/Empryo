@@ -64,8 +64,8 @@ export function runFind(pattern: string, basePath: string): Promise<ToolResult> 
     }
     // find -name matches only the basename. Use -path for documented slash
     // patterns like **/*.ts, including the zero-directory **/ case.
-    const base = basePath.replace(/\\/+$/, "") || "/";
-    const glob = pattern.replace(/^\\.\\//, "");
+    const base = basePath.endsWith("/") && basePath !== "/" ? basePath.slice(0, -1) : basePath;
+    const glob = pattern.startsWith("./") ? pattern.slice(2) : pattern;
     const rooted = `${base === "/" ? "" : base}/${glob}`;
     const shallow = `${base === "/" ? "" : base}/${glob.replaceAll("**/", "")}`;
     const matcher = glob.includes("/")
