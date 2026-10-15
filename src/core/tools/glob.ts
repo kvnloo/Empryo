@@ -50,7 +50,8 @@ function runFd(bin: string, pattern: string, basePath: string): Promise<ToolResu
   });
 }
 
-function runFind(pattern: string, basePath: string): Promise<ToolResult> {
+/** POSIX fallback (exported for focused filesystem regression tests). */
+export function runFind(pattern: string, basePath: string): Promise<ToolResult> {
   return new Promise((resolve) => {
     // POSIX `find` is missing on Windows; the bundled PowerShell equivalent
     // (`Get-ChildItem -Recurse`) is slow and has different semantics. Surface
@@ -61,7 +62,16 @@ function runFind(pattern: string, basePath: string): Promise<ToolResult> {
       resolve({ success: false, output: msg, error: msg });
       return;
     }
-    const proc = spawn("find", [basePath, "-name", pattern, "-maxdepth", "5"], {
+    // find -name matches only the basename. Use -path for documented slash
+    // patterns like **/*.ts, including the zero-directory **/ case.
+    const base = basePath.replace(/\\/+$/, "") || "/";
+    const glob = pattern.replace(/^\\.\\//, "");
+    const rooted = `${base === "/" ? "" : base}/${glob}`;
+    const shallow = `${base === "/" ? "" : base}/${glob.replaceAll("**/", "")}`;
+    const matcher = glob.includes("/")
+      ? ["(", "-path", rooted, ...(shallow === rooted ? [] : ["-o", "-path", shallow]), ")"]
+      : ["-name", glob];
+    const proc = spawn("find", [base, "-maxdepth", "5", "-type", "f", ...matcher], {
       cwd: getCwd(),
       timeout: 10_000,
     });
