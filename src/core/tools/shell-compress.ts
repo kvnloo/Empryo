@@ -78,7 +78,7 @@ const NOISE_RE =
 // Failure details often differ only by numbers (file paths, symbol names, line numbers).
 // Never normalize those into one "similar lines" marker or actionable errors disappear.
 const FAILURE_DETAIL_RE =
-  /(?:^|[\\s:])(?:error|fatal|fail|failed|failure|exception|panic)\\b|\\b[A-Za-z]+Error\\b|[✗✘❌]/i;
+  /(?:^|[\s:])(?:error|fatal|fail|failed|failure|exception|panic)\b|\b[A-Za-z]+Error\b|[✗✘❌]/i;
 
 const MAX_STACK_FRAMES = 5;
 const MAX_PASS_LINES = 3;
