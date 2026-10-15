@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runFind } from "../src/core/tools/glob.js";
 
-describe.skipIf(process.platform === "win32")("POSIX find fallback for glob", () => {
-  test("**/*.ts matches root and nested TypeScript files", async () => {
+const posixTest = process.platform === "win32" ? test.skip : test;
+
+describe("POSIX find fallback for glob", () => {
+  posixTest("**/*.ts matches root and nested TypeScript files", async () => {
     const root = mkdtempSync(join(tmpdir(), "empryo-glob-"));
     try {
       mkdirSync(join(root, "src", "nested"), { recursive: true });
@@ -26,7 +28,7 @@ describe.skipIf(process.platform === "win32")("POSIX find fallback for glob", ()
     }
   });
 
-  test("src/**/*.test.* matches tests at both shallow and deeper levels", async () => {
+  posixTest("src/**/*.test.* matches tests at both shallow and deeper levels", async () => {
     const root = mkdtempSync(join(tmpdir(), "empryo-glob-"));
     try {
       mkdirSync(join(root, "src", "nested"), { recursive: true });
