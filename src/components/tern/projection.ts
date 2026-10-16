@@ -102,10 +102,20 @@ export function projectLiveTool(call: LiveNativeTool): NativeNode {
 export function projectMessage(message: ChatMessage): NativeNode {
   const id = `message.${message.id}`;
   if (message.role === "user") {
-    return { id, k: "col", p: { role: "omp.user" }, c: [textNode(`${id}.text`, message.content, "omp.user")] };
+    return {
+      id,
+      k: "col",
+      p: { role: "omp.user" },
+      c: [textNode(`${id}.text`, message.content, "omp.user")],
+    };
   }
   if (message.role === "system") {
-    return { id, k: "col", p: { role: "omp.notice" }, c: [textNode(`${id}.text`, message.content, "omp.notice", "text")] };
+    return {
+      id,
+      k: "col",
+      p: { role: "omp.notice" },
+      c: [textNode(`${id}.text`, message.content, "omp.notice", "text")],
+    };
   }
 
   const calls = new Map((message.toolCalls ?? []).map((call) => [call.id, call]));

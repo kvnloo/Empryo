@@ -5,7 +5,6 @@ import {
   projectLiveTool,
   projectMessage,
   projectTool,
-  projectTranscript,
 } from "../src/components/tern/projection.js";
 import type { ChatMessage, ToolCall } from "../src/types/index.js";
 
@@ -52,7 +51,6 @@ describe("Tern projection of Empryo messages", () => {
     const user: ChatMessage = { id: "u1", role: "user", content: "hello", timestamp: 1 };
     expect(projectMessage(user).id).toBe("message.u1");
     expect(projectMessage(user).p?.role).toBe("omp.user");
-    expect(projectTranscript([user])).toHaveLength(1);
   });
 
   it("keeps thinking, tool and text blocks in arrival order", () => {

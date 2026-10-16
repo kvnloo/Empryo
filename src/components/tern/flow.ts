@@ -44,12 +44,7 @@ export function ownsEvent(
   active: string | null,
   ev: { type: string; session_id?: string },
 ): boolean {
-  return (
-    !ev.session_id ||
-    !active ||
-    ev.session_id === active ||
-    ev.type.startsWith("gateway.")
-  );
+  return !ev.session_id || !active || ev.session_id === active || ev.type.startsWith("gateway.");
 }
 
 /** A resumed running or waiting turn retains its original start time. */

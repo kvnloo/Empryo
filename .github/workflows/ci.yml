@@ -1,8 +1,8 @@
 name: CI
 
-# v2 is archived. This repo now carries the issue tracker and the locale
-# catalogs; code PRs are lint + typecheck only. No compile gate, no Windows
-# bundles, no installers — releases are cut from v3 (private).
+# v2 is archived. Keep lint and typecheck for code PRs and run the lightweight
+# downstream Tern adapter regressions. No compile gate, Windows bundles or
+# installers — releases are cut from v3 (private).
 
 on:
   push:
@@ -31,3 +31,6 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+
+      - name: Tern adapter regressions
+        run: bun test tests/tern-native.test.ts
