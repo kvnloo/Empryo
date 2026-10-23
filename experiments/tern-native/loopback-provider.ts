@@ -97,7 +97,7 @@ function completion(req: ChatRequest): Response {
   });
   const wire = [
     ...chunks.map((chunk) => "data: " + JSON.stringify(chunk) + "\n\n"),
-    "data: [DONE]\\n\\n",
+    "data: [DONE]\n\n",
   ];
   let index = 0;
   const stream = new ReadableStream<Uint8Array>({
