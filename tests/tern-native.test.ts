@@ -90,6 +90,58 @@ describe("Tern projection of Empryo messages", () => {
     expect(settled.p?.status).toBe("done");
   });
 
+  it("projects a real read file spec path exactly, including ranges and long paths", () => {
+    for (const path of [
+      "src/index.ts",
+      `src/${"a".repeat(200)}.ts`,
+      `src/${"😀".repeat(100)}.ts`,
+      " src/spaced.ts  ",
+    ]) {
+      for (const files of [[{ path, ranges: [{ start: 1, end: 5 }] }], { path }]) {
+        expect(projectTool({ id: "read", name: "read", args: { files } }).p?.target).toBe(path);
+      }
+    }
+  });
+
+  it("summarizes batches in input order as first path plus remaining valid count", () => {
+    const files = [{ path: "src/z.ts" }, null, { path: "" }, { path: 42 }, { path: "src/a.ts" }, { path: "src/b.ts" }];
+    expect(projectTool({ id: "read", name: "read", args: { files } }).p?.target).toBe("src/z.ts (+2 more)");
+    const longPath = "x".repeat(121);
+    expect(projectTool({ id: "read", name: "read", args: { files: [{ path: longPath }, { path: "b" }] } }).p?.target).toBe(`${"x".repeat(119)}… (+1 more)`);
+    expect(projectTool({ id: "read", name: "read", args: { files: [{ path: "x".repeat(120) }, { path: "b" }] } }).p?.target).toBe(`${"x".repeat(120)} (+1 more)`);
+  });
+
+  it("keeps Unicode scalars intact at the batch preview boundary", () => {
+    const cases = [
+      [`${"x".repeat(118)}😀tail`, `${"x".repeat(118)}…`],
+      [`${"x".repeat(117)}😀tail`, `${"x".repeat(117)}😀…`],
+    ] as const;
+    for (const [path, preview] of cases) {
+      const tool = projectTool({ id: "read-unicode", name: "read", args: { files: [{ path }, { path: "b" }] } });
+      expect(tool.p?.target).toBe(`${preview} (+1 more)`);
+    }
+  });
+
+  it("never invents targets from malformed read specs", () => {
+    const invalid = [null, undefined, "", "src/fake.ts", 42, false, {}, [], { path: null }, { path: "" }, { path: "  " }, { path: 42 }, { path: ["fake.ts"] }, { file_path: "fake.ts" }, [[{ path: "fake.ts" }]]];
+    for (const files of [...invalid, invalid]) {
+      expect(projectTool({ id: "read", name: "read", args: { files } }).p?.target).toBeUndefined();
+    }
+    expect(projectTool({ id: "read", name: "read", args: { files: [...invalid, { path: "real.ts" }] } }).p?.target).toBe("real.ts");
+  });
+
+  it("preserves nonempty top-level precedence and shell/path targets", () => {
+    const keys = ["command", "path", "file_path", "pattern", "query", "url"];
+    for (const [index, key] of keys.entries()) {
+      const args: Record<string, unknown> = { files: [{ path: "fallback.ts" }] };
+      for (const later of keys.slice(index)) args[later] = later;
+      expect(projectTool({ id: "top", name: "shell", args }).p?.target).toBe(key);
+    }
+    expect(projectTool({ id: "shell", name: "shell", args: { command: "bun --version", path: "ignored.ts" } }).p?.target).toBe("bun --version");
+    expect(projectTool({ id: "path", name: "read_file", args: { command: "", path: "src/index.ts" } }).p?.target).toBe("src/index.ts");
+    expect(projectTool({ id: "read", name: "read", args: { command: null, path: 42, query: "", files: [{ path: "fallback.ts" }] } }).p?.target).toBe("fallback.ts");
+  });
+
   it("shows failed tools rather than silently dropping errors", () => {
     const tool = projectTool({ id: "t1", name: "dispatch", args: {}, result: { success: false, output: "", error: "failed" } });
     expect(tool.p?.status).toBe("error");
