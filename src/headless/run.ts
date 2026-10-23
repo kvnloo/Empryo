@@ -331,6 +331,29 @@ export function headlessToolResult(part: {
   };
 }
 
+/** Bind the real core event bus to exactly the tool IDs owned by this stream. */
+export function bridgeSubagentEvents(
+  emit: (event: HeadlessEvent) => void,
+  ownedToolCallIds: ReadonlySet<string>,
+  enabled = true,
+): () => void {
+  if (!enabled) return () => {};
+  const offStep = onSubagentStep((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-step", event });
+  });
+  const offAgent = onMultiAgentEvent((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-event", event });
+  });
+  const offStats = onAgentStats((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-stats", event });
+  });
+  return () => {
+    offStep();
+    offAgent();
+    offStats();
+  };
+}
+
 async function streamTurn(
   agent: ReturnType<typeof createForgeAgent>,
   messages: ModelMessage[],
@@ -363,21 +386,7 @@ async function streamTurn(
   // The actual SDK toolCallId correlates concurrent subagent events to this
   // stream/tab. Never attach an unrelated agent event from another tab.
   const ownedToolCallIds = new Set<string>();
-  const offStep = onSubagentStep((event) => {
-    if (reporting.events && ownedToolCallIds.has(event.parentToolCallId)) {
-      emit({ type: "subagent-step", event });
-    }
-  });
-  const offAgent = onMultiAgentEvent((event) => {
-    if (reporting.events && ownedToolCallIds.has(event.parentToolCallId)) {
-      emit({ type: "subagent-event", event });
-    }
-  });
-  const offStats = onAgentStats((event) => {
-    if (reporting.events && ownedToolCallIds.has(event.parentToolCallId)) {
-      emit({ type: "subagent-stats", event });
-    }
-  });
+  const releaseAgentEvents = bridgeSubagentEvents(emit, ownedToolCallIds, reporting.events === true);
   let error: string | undefined;
   let exitCode = EXIT_OK;
 
@@ -479,9 +488,7 @@ async function streamTurn(
     if (reporting.showProgress) stderrError(error);
     if (reporting.events) emit({ type: "error", error });
   } finally {
-    offStep();
-    offAgent();
-    offStats();
+    releaseAgentEvents();
   }
 
   return { output, steps, tokens, toolCalls, filesEdited: [...filesEdited], error, exitCode };

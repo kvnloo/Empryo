@@ -5,7 +5,18 @@
  */
 import type { HeadlessEvent } from "../../headless/types.js";
 import type { ChatMessage, MessageSegment, ToolCall } from "../../types/index.js";
-import { type NativeNode, projectTranscript } from "./projection.js";
+import type { NativeNode } from "./projection.js";
+import { projectTranscript } from "./projection.js";
+
+type AgentState = "running" | "done" | "error";
+interface AgentCard {
+  key: string;
+  title: string;
+  state: AgentState;
+  target?: string;
+  detail?: string;
+  error?: string;
+}
 
 export class NativeTranscript {
   readonly messages: ChatMessage[] = [];
@@ -13,6 +24,7 @@ export class NativeTranscript {
   #active: ChatMessage | null = null;
   #sequence = 0;
   #steps = 0;
+  readonly #agentCards = new Map<string, Map<string, AgentCard>>();
 
   get busy(): boolean {
     return this.#active !== null;
@@ -61,7 +73,22 @@ export class NativeTranscript {
         this.#toolCall(event.tool, event.toolCallId, event.input);
         return;
       case "tool-result":
-        this.#toolResult(event.tool, event.toolCallId, event.summary);
+        this.#toolResult(
+          event.tool,
+          event.toolCallId,
+          event.output ?? event.summary,
+          event.success !== false,
+          event.error,
+        );
+        return;
+      case "subagent-event":
+        this.#agentEvent(event.event);
+        return;
+      case "subagent-step":
+        this.#agentStep(event.event);
+        return;
+      case "subagent-stats":
+        this.#agentStats(event.event);
         return;
       case "step":
         this.#steps = event.step;
@@ -76,7 +103,7 @@ export class NativeTranscript {
         this.notice(event.message);
         return;
       case "error":
-        this.notice(event.error);
+        this.fail(event.error);
         return;
       case "session-saved":
         return;
@@ -99,8 +126,139 @@ export class NativeTranscript {
     this.#advance();
   }
 
+  /** A failed engine cannot complete this or queued turns: retire both. */
+  fail(message: string): void {
+    if (this.#active) {
+      this.#active.durationMs = Date.now() - this.#active.timestamp;
+      for (const call of this.#active.toolCalls ?? []) {
+        if (!call.result) call.result = { success: false, output: "", error: message };
+      }
+      this.#active = null;
+    }
+    this.queued.length = 0;
+    this.notice(message);
+  }
+
   project(): NativeNode[] {
-    return projectTranscript(this.messages);
+    const nodes = projectTranscript(this.messages);
+    for (const [index, message] of this.messages.entries()) {
+      const parent = nodes[index];
+      if (!parent) continue;
+      for (const call of message.toolCalls ?? []) {
+        const agents = this.#agentCards.get(call.id);
+        if (!agents?.size) continue;
+        const tool = parent.c?.find((child) => child.id === "tool." + call.id);
+        if (!tool) continue;
+        if (!tool.c) tool.c = [];
+        for (const card of agents.values()) {
+          const detail = [card.error, card.detail].filter(Boolean).join("\n");
+          tool.c.push({
+            id: "agent." + call.id + "." + card.key,
+            k: "tool",
+            p: {
+              role: "omp.tool",
+              name: "task",
+              title: card.title,
+              target: card.target,
+              status: card.state,
+              collapsible: Boolean(detail),
+              collapsed: card.state !== "running" && Boolean(detail),
+            },
+            c: detail
+              ? [{
+                  id: "agent." + call.id + "." + card.key + ".detail",
+                  k: "text",
+                  p: { role: "omp.tool.output", text: detail },
+                }]
+              : [],
+          });
+        }
+      }
+    }
+    return nodes;
+  }
+
+  #cards(parentId: string): Map<string, AgentCard> | null {
+    if (!this.messages.some((message) => message.toolCalls?.some((tool) => tool.id === parentId))) {
+      return null;
+    }
+    let cards = this.#agentCards.get(parentId);
+    if (!cards) {
+      cards = new Map();
+      this.#agentCards.set(parentId, cards);
+    }
+    return cards;
+  }
+
+  #agentEvent(event: Extract<HeadlessEvent, { type: "subagent-event" }>["event"]): void {
+    const cards = this.#cards(event.parentToolCallId);
+    if (!cards) return;
+    const key = event.agentId ? "agent." + event.agentId : "dispatch";
+    const existing = cards.get(key);
+    const state: AgentState =
+      event.type === "agent-error" || (event.type === "agent-done" && event.succeeded === false)
+        ? "error"
+        : event.type === "agent-done" || event.type === "dispatch-done"
+          ? "done"
+          : "running";
+    const detail = [
+      event.warning,
+      event.modelId ? "Model: " + event.modelId : "",
+      event.tier ? "Tier: " + event.tier : "",
+      event.completedAgents !== undefined && event.totalAgents !== undefined
+        ? "Completed: " + event.completedAgents + "/" + event.totalAgents
+        : "",
+      event.findingCount !== undefined ? "Findings: " + event.findingCount : "",
+      event.resultChars !== undefined ? "Result length: " + event.resultChars + " chars" : "",
+      event.toolUses !== undefined ? "Tool uses: " + event.toolUses : "",
+    ].filter(Boolean).join(" · ");
+    cards.set(key, {
+      key,
+      title: (event.agentId ?? "Dispatch") + (event.role ? " (" + event.role + ")" : ""),
+      state,
+      target: event.task ?? existing?.target,
+      detail: detail || existing?.detail || event.type,
+      error: event.error,
+    });
+  }
+
+  #agentStep(event: Extract<HeadlessEvent, { type: "subagent-step" }>["event"]): void {
+    const cards = this.#cards(event.parentToolCallId);
+    if (!cards) return;
+    const key = "step." + (event.agentId ?? "dispatch") + "." + event.toolName;
+    const previous = cards.get(key);
+    cards.set(key, {
+      key,
+      title: (event.agentId ? event.agentId + ": " : "") + event.toolName,
+      target: event.args ?? previous?.target,
+      state: event.state,
+      detail: [
+        event.cacheState ? "Cache: " + event.cacheState : "",
+        event.sourceAgentId ? "Source: " + event.sourceAgentId : "",
+        event.backend ? "Backend: " + event.backend : "",
+      ].filter(Boolean).join(" · ") || previous?.detail,
+    });
+  }
+
+  #agentStats(event: Extract<HeadlessEvent, { type: "subagent-stats" }>["event"]): void {
+    const cards = this.#cards(event.parentToolCallId);
+    if (!cards) return;
+    const key = "agent." + event.agentId;
+    const existing = cards.get(key);
+    cards.set(key, {
+      key,
+      title: existing?.title ?? event.agentId,
+      state: existing?.state ?? "running",
+      target: existing?.target,
+      error: existing?.error,
+      detail: [
+        existing?.detail,
+        "Steps: " + event.stepCount,
+        "Tools: " + event.toolUses,
+        "Tokens: " + event.tokenUsage.total,
+        "Cache hits: " + event.cacheHits,
+      ].filter(Boolean).join(" · "),
+    });
   }
 
   #id(kind: string): string {
@@ -167,7 +325,13 @@ export class NativeTranscript {
     else parts.push({ type: "tools", toolCallIds: [id] });
   }
 
-  #toolResult(name: string, callId: string | undefined, summary: string): void {
+  #toolResult(
+    name: string,
+    callId: string | undefined,
+    output: string,
+    success: boolean,
+    error?: string,
+  ): void {
     const assistant = this.#active;
     if (!assistant) return;
     let call = callId
@@ -178,7 +342,13 @@ export class NativeTranscript {
       this.#toolCall(name, id);
       call = assistant.toolCalls?.find((item) => item.id === id);
     }
-    if (call) call.result = { success: true, output: summary };
+    if (call) {
+      call.result = {
+        success,
+        output,
+        ...(error ? { error: output ? error + "\n" + output : error } : {}),
+      };
+    }
   }
 
   #finish(output: string, error?: string): void {
