@@ -300,10 +300,20 @@ describe("SDK-routed native controller actions (separate from real-provider PTY 
       event(host.input, { ev: "action", sf: "empryo", id: deny.id, act: "click" });
       expect(await denyDecision).toBe(false);
 
+      const beforeAllow = frames(host.output).length;
       const allowDecision = options[0]?.onApproveDestructive("synthetic allowed request");
-      const allow = await eventually(() => findAdded(host.output,
-        (n) => n.k === "text" && n.p?.text === "Allow once" &&
-        n.p?.role === "omp.modal.action" && n.id !== deny.id));
+      const allow = await eventually(() => {
+        for (const frame of frames(host.output).slice(beforeAllow)) {
+          for (const op of frame.ops) {
+            if (op[0] !== "add") continue;
+            const found = findWire(op[4] as WireNode, (n) =>
+              n.k === "text" && n.p?.text === "Allow once" &&
+              n.p?.role === "omp.modal.action");
+            if (found) return found;
+          }
+        }
+        return undefined;
+      });
       event(host.input, { ev: "action", sf: "empryo", id: allow.id, act: "click" });
       expect(await allowDecision).toBe(true);
 
@@ -313,7 +323,7 @@ describe("SDK-routed native controller actions (separate from real-provider PTY 
       await running;
       expect(session.closed).toBe(true);
       expect(host.input.isRaw).toBe(false);
-      expect(host.output.messages.some((m) => m.verb === "x")).toBe(true);
+      expect(session.surfaces).toHaveLength(0);
     } finally {
       await session.close();
     }
