@@ -110,9 +110,10 @@ SOULFORGE_TERN=1 bun run dev --resume EXISTING_SESSION_ID
 Replay `/tmp/empryo-tsp.jsonl` with the Tern SDK's `surface-play` tool
 after capturing a live TSP recording. Exercise frame-credit starvation,
 disconnect, multi-tab stale input, overlapping approvals and session reload.
-The repository does not yet contain a credential-free real-provider loopback
-smoke harness or automated recording/replay gate. The new SDK Session tests
-use a memory-backed transport, **not** a live native terminal.
+TRN3 now adds an isolated local provider fixture, SDK-level protocol tests,
+a JSONL wire record/credit regression, and a separate real OS-PTY entry smoke.
+These are **not yet executed** by this connector-only worker; the historical
+TRN2 SDK tests used a memory-backed transport. See the commands below.
 
 Known baseline issue: the pre-TRN1 full suite previously had six Git
 5000-ms timeouts in `cross-tab-battle.test.ts` (lines 1445, 1461, 1474,
@@ -120,9 +121,107 @@ Known baseline issue: the pre-TRN1 full suite previously had six Git
 weaken those assertions. Distinguish any still-failing legacy tests from
 new Tern failures.
 
-Outstanding work: offline loopback-provider entry smoke, TSP recording/replay
-and credit starvation in an actual supported host; native saved-session
-history/picker; real terminal editor/media/diff parity. OpenTUI remains
+Outstanding product features beyond this acceptance slice: native saved-session
+history/picker and real terminal editor/media/diff parity. The new loopback/PTY
+harness must first be run by OMP, including the real Tern-serve acceptance. OpenTUI remains
 the complete fallback. Public v3 integration remains contingent on a
 published, maintainer-approved extension seam. Preserve the original Hermes /
 Nous Research and Stencil/Tern MIT provenance and this project's BUSL-1.1.
+
+
+## TRN3 acceptance harness (fork-only; never use a paid model)
+
+The isolated fixture at `experiments/tern-native/loopback-provider.ts` is a
+**synthetic** OpenAI-compatible Ollama endpoint, bound to `127.0.0.1` only.
+It returns SSE text deltas or a model-generated `read` tool call for an
+operator-owned `fixture.txt`; the real Empryo agent executes that read.
+Its `SYNTHETIC_*` markers are test data, not assertions about model quality.
+The POSIX script `experiments/tern-native/pty-smoke.py` starts a private
+HOME and workspace, serves the fixture at a free loopback port, launches
+`src/boot.tsx` under a **real OS PTY**, implements the actual hello/ACK
+terminal end of the SDK wire, and feeds separate UTF-8 byte writes,
+bracketed paste, and Enter. It verifies the exact prompt in the HTTP
+provider log, streamed answer frames, a real `read` result on the owned
+file, recorded in/out TSP frames, terminal `gone` teardown/mode reset,
+and a fresh `TERN_TSP=0` **actual OpenTUI boot**. It does not call a fake
+agent runner. This PTY terminal fixture is not a substitute for OMP's
+owned headless Sway + Tern serve run.
+
+`tests/tern-native-e2e.test.ts` calls the real Tern SDK `connect()`, the
+real `Session` and `Surface` over deterministic byte-stream endpoints
+(not mocked SDK objects), including handshake refusal/timeout/non-TTY,
+1-credit starvation and coalescing, recorded JSONL/readback, native
+edit/undo/send and guarded modal actions, and terminal-`gone` cleanup.
+Its controller-action test injects only a probe `RunChat` to assert
+routing; the **separate PTY program** is the real model-adapter proof.
+Actual SDK recording is at the optional `TERN_TSP_RECORD` path.
+A frame replay invariant checks the exact final diff, focus operation,
+and omission of superseded drafts after the ACK.
+
+### Exact OMP verification commands
+
+From the existing downstream branch of PR #5 (no new PR, no merge):
+
+```sh
+git fetch origin feat/tern-native-preview-port-20261016
+git switch feat/tern-native-preview-port-20261016
+git pull --ff-only
+git rev-parse HEAD
+bun install --frozen-lockfile
+bun run lint
+bun run typecheck
+bun test tests/tern-native.test.ts tests/tern-native-runtime.test.ts tests/tern-native-correctness.test.ts tests/tern-native-e2e.test.ts tests/git-stderr-drain.test.ts
+bun test
+bun run build:no-compiler
+python3 experiments/tern-native/pty-smoke.py
+```
+
+Run the Python PTY harness on Linux/macOS after frozen install. It requires
+`bun` and Python 3's **standard library**, no API keys, no Ollama process
+and no external provider. It creates and deletes its own temporary HOME,
+config and workspace; it should print two `PASS` lines on success.
+It deliberately **fails** if the real tool result, exact PTY prompt,
+protocol capture, terminal cleanup, or classic fallback is absent.
+
+For a separate visual acceptance inside an **owned headless Sway + Tern serve**
+environment, start the loopback endpoint in one operator terminal:
+
+```sh
+TRN3_PORT=11439 bun run experiments/tern-native/loopback-provider.ts
+```
+
+In the Tern pane use an isolated HOME and workspace so no credentials or
+project files are touched (preserve the repo path before changing cwd):
+
+```sh
+EMPRYO_ROOT="$PWD"
+TRN3_ROOT="$(mktemp -d)"
+mkdir -p "$TRN3_ROOT/home/.soulforge" "$TRN3_ROOT/workspace"
+printf '%s\\n' '{"defaultModel":"ollama/trn3-fixture","addonsPromptShown":true,"repoMap":false,"webSearch":false,"telemetry":false}' > "$TRN3_ROOT/home/.soulforge/config.json"
+printf 'TRN3_OWNED_CONTENT\\n' > "$TRN3_ROOT/workspace/fixture.txt"
+cd "$TRN3_ROOT/workspace"
+HOME="$TRN3_ROOT/home" SOULFORGE_TERN=1 SOULFORGE_NO_PROMPT=1 SOULFORGE_NO_REPOMAP=1 OLLAMA_HOST=http://127.0.0.1:11439 TERN_TSP_RECORD="$TRN3_ROOT/tsp.jsonl" bun run "$EMPRYO_ROOT/src/boot.tsx"
+```
+
+Send `TRN3_READ_FILE` and inspect the live streamed transcript/tool result.
+Then run the same entry with `TERN_TSP=0` to verify the original OpenTUI
+renderer. Always stop the fixture server afterward and remove the temporary
+directory. Preserve any recorded evidence for review before cleanup.
+
+### Pre-existing full-suite Git timeouts
+
+Before this slice, plain `bun test` gave 3099 pass, 1 skip, 6 timeout
+failures (five `tests/cross-tab-battle.test.ts` and one
+`tests/git-status-parsing.test.ts`). Inspection showed
+`src/core/git/status.ts` spawned with a piped stderr but never consumed it.
+That can deadlock Git when stderr exceeds the pipe capacity. TRN3 now drains
+stderr and adds `tests/git-stderr-drain.test.ts` with a real Git alias
+writing 1 MiB to stderr. **It has not been established that this explains
+all six historical timeouts.** Rerun the original full suite without skips
+or larger timeouts; record any exact survivors and distinguish environment
+contention from that pipe bug. Lint checks `src/` (per package.json);
+the new test utilities are exercised by their explicit Bun commands.
+
+**Not verified by this worker:** install, lint, typecheck, focused tests,
+full tests, supported build, real OS-PTY execution and Sway/Tern serve.
+Nothing may be described as green at this new head until OMP runs it.
