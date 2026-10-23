@@ -74,12 +74,13 @@ export class NativeRunner {
   }
 
   async #loop(): Promise<void> {
-    const execute = this.run ?? (await import("../../headless/run.js")).runChat;
-    while (!this.#closed) {
-      this.#controller = new AbortController();
-      const ctl = this.#controller;
-      try {
-        await execute(
+    let reportedFailure = false;
+    try {
+      const execute = this.run ?? (await import("../../headless/run.js")).runChat;
+      while (!this.#closed) {
+        const ctl = this.#controller;
+        try {
+          if (!ctl.signal.aborted) await execute(
           {
             tabId: this.options.tabId,
             tabLabel: this.options.label,
@@ -96,24 +97,40 @@ export class NativeRunner {
               if (event.type === "chat-done" && event.sessionId) {
                 this.#sessionId = event.sessionId;
               }
-              this.emit(event);
+              if (event.type === "error" && event.error !== "Aborted") reportedFailure = true;
+              if (!this.#closed) this.emit(event);
             },
           },
           this.options.config,
-        );
-      } catch (error) {
+          );
+        } catch (error) {
+          if (!ctl.signal.aborted && !this.#closed) {
+            reportedFailure = true;
+            this.emit({
+              type: "error",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+        if (!ctl.signal.aborted) break;
+        if (!this.#closed) this.#controller = new AbortController();
+      }
+    } catch (error) {
+      if (!this.#closed) {
+        reportedFailure = true;
         this.emit({
           type: "error",
           error: error instanceof Error ? error.message : String(error),
         });
-        if (!ctl.signal.aborted) break;
       }
-      // An aborted runChat saves the session before returning; restart using
-      // that session ID. An ordinary completed/failed run does not spin.
-      if (!ctl.signal.aborted) break;
+    } finally {
+      this.#ended = true;
+      this.#queue = [];
+      this.#wake(null);
+      if (!this.#closed && !reportedFailure) {
+        this.emit({ type: "error", error: "Agent session ended unexpectedly." });
+      }
     }
-    this.#ended = true;
-    this.#wake(null);
   }
 
   #read(): Promise<string | null> {

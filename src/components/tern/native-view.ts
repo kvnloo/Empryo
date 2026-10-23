@@ -19,6 +19,7 @@ export interface ViewModal {
   title: string;
   description: string;
   choices: readonly ViewChoice[];
+  answer?: { text: string; edit: (event: EditEvent) => void; send: (event: SendEvent) => void; submit: () => void };
 }
 
 export interface NativeViewState {
@@ -26,6 +27,7 @@ export interface NativeViewState {
   model: string;
   tabs: readonly { id: string; label: string }[];
   activeId: string;
+  interactiveId: string;
   busy: boolean;
   steps: number;
   queued: number;
@@ -71,7 +73,7 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
     node(
       "text",
       {
-        key: "tab-" + tab.id,
+        key: "tab-" + state.interactiveId + "-" + tab.id,
         role: "omp.tab",
         tone: tab.id === state.activeId ? "accent" : "muted",
         onClick: () => actions.switchTab(tab.id),
@@ -85,11 +87,11 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
   const dock = node("col", { key: "dock", role: "omp.dock", gap: "xs" }, [
     node("row", { key: "tabs", role: "omp.tabs", gap: "sm" }, [
       ...tabs,
-      node("text", { key: "new", onClick: actions.newTab, tone: "accent" }, "+"),
-      node("text", { key: "close", onClick: actions.closeTab, tone: "muted" }, "×"),
+      node("text", { key: "new-" + state.interactiveId, onClick: actions.newTab, tone: "accent" }, "+"),
+      node("text", { key: "close-" + state.interactiveId, onClick: actions.closeTab, tone: "muted" }, "×"),
     ]),
     node("editor", {
-      key: "composer",
+      key: "composer-" + state.interactiveId,
       role: "omp.editor",
       text: state.draft,
       cursor: state.cursor,
@@ -109,7 +111,7 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
       }),
       node(
         "seg",
-        { key: "action", side: "right", onClick: state.busy ? actions.stop : actions.submit },
+        { key: "action-" + state.interactiveId, side: "right", onClick: state.busy ? actions.stop : actions.submit },
         state.busy ? "Stop (Ctrl+C)" : "Send",
       ),
     ]),
@@ -133,6 +135,27 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
             },
             [
               node("md", { key: "question" }, modal.description),
+              ...(modal.answer
+                ? [
+                    node("editor", {
+                      key: "answer-" + modal.id,
+                      role: "omp.editor",
+                      text: modal.answer.text,
+                      cursor: modal.answer.text.length,
+                      placeholder: "Type your answer",
+                      prompt: "> ",
+                      maxLines: 8,
+                      onEdit: modal.answer.edit,
+                      onSend: modal.answer.send,
+                    }),
+                    node("text", {
+                      key: "submit-answer-" + modal.id,
+                      role: "omp.modal.action",
+                      tone: "accent",
+                      onClick: modal.answer.submit,
+                    }, "Submit answer"),
+                  ]
+                : []),
               node(
                 "row",
                 { key: "choices", gap: "md" },

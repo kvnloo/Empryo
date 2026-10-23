@@ -52,6 +52,8 @@ interface NativePrompt {
   choices: Choice[];
   fallback: string;
   resolve: (value: string) => void;
+  allowText: boolean;
+  answer: string;
 }
 
 const MAX_TABS = 5;
@@ -67,6 +69,7 @@ export class NativeApp {
   #closed = false;
   #scheduled = false;
   #focusedTab = "";
+  #viewEpoch = 0;
 
   constructor(
     private readonly session: Session,
@@ -74,16 +77,15 @@ export class NativeApp {
   ) {}
 
   async run(): Promise<void> {
-    this.#surface = this.session.open({
-      id: "empryo",
-      mode: "inline",
-      role: "omp.session",
-      title: "Empryo",
-    });
-    this.#addTab();
-    this.#render();
-
     try {
+      this.#surface = this.session.open({
+        id: "empryo",
+        mode: "inline",
+        role: "omp.session",
+        title: "Empryo",
+      });
+      this.#addTab();
+      this.#render();
       for await (const input of this.session) {
         if (input.type === "key") {
           if (this.#key(input.key) === "quit") break;
@@ -94,8 +96,11 @@ export class NativeApp {
     } finally {
       this.#closed = true;
       for (const prompt of [...this.#prompts]) this.#finishPrompt(prompt, prompt.fallback);
-      await Promise.all(this.#tabs.map((tab) => tab.runner.close()));
-      await this.session.close();
+      try {
+        await Promise.allSettled(this.#tabs.map((tab) => tab.runner.close()));
+      } finally {
+        await this.session.close();
+      }
     }
   }
 
@@ -148,13 +153,14 @@ export class NativeApp {
     if (previous) this.#cancelPrompts(previous);
     if (!this.#switches.current(generation)) return;
     this.#activeId = id;
+    this.#viewEpoch++;
     this.#switches.end(generation);
     this.#changed();
   }
 
-  async #closeActive(): Promise<void> {
+  async #closeActive(expected?: NativeTab): Promise<void> {
     const tab = this.#current();
-    if (!tab) return;
+    if (!tab || (expected && tab !== expected)) return;
     if (this.#tabs.length === 1) {
       await this.session.close();
       return;
@@ -175,12 +181,13 @@ export class NativeApp {
       onPlanStepUpdate: (stepId: string, status: PlanStepStatus) => {
         this.#notice(tabId, "Plan step " + stepId + ": " + status);
       },
-      onPlanReview: async (plan: Plan): Promise<PlanReviewAction> => {
+      onPlanReview: async (plan: Plan, planFile: string, planContent: string): Promise<PlanReviewAction> => {
         const detail = plan.steps.map((step) => "- " + step.label).join("\n");
         return this.#ask(
           tabId,
           "Review plan",
-          plan.title + "\n\n" + detail,
+          [plan.title, "Plan file: " + planFile, planContent, "Steps:\n" + detail]
+            .filter(Boolean).join("\n\n"),
           [
             { id: "execute", label: "Execute", value: "execute", tone: "accent" },
             {
@@ -197,14 +204,14 @@ export class NativeApp {
       onAskUser: async (question, options, allowSkip) => {
         const choices: Choice[] = options.map((option, index) => ({
           id: "option." + String(index),
-          label: option.label,
+          label: option.description ? option.label + " — " + option.description : option.label,
           value: option.value,
           tone: "neutral",
         }));
         if (allowSkip) {
           choices.push({ id: "skip", label: "Skip", value: "__skipped__", tone: "neutral" });
         }
-        return this.#ask(tabId, "Question", question, choices, allowSkip ? "__skipped__" : "");
+        return this.#ask(tabId, "Question", question, choices, allowSkip ? "__skipped__" : "", options.length === 0);
       },
       onOpenEditor: async (path?: string) => {
         this.#notice(
@@ -238,8 +245,10 @@ export class NativeApp {
     description: string,
     choices: Choice[],
     fallback: string,
+    allowText = false,
   ): Promise<string> {
-    if (this.#closed || !this.#tabs.some((tab) => tab.id === tabId)) {
+    // A background permission request has no visible authority surface.
+    if (this.#closed || this.#activeId !== tabId || !this.#tabs.some((tab) => tab.id === tabId)) {
       return Promise.resolve(fallback);
     }
     const id = crypto.randomUUID();
@@ -254,6 +263,8 @@ export class NativeApp {
         choices,
         fallback,
         resolve,
+        allowText,
+        answer: "",
       });
       this.#changed();
     });
@@ -274,15 +285,21 @@ export class NativeApp {
     }
   }
 
+  #currentPrompt(tabId: string): NativePrompt | undefined {
+    return this.#prompts.findLast((prompt) => prompt.tabId === tabId);
+  }
+
   #modal(tabId: string): ViewModal | null {
-    const prompt = this.#prompts.at(-1);
-    if (!prompt || prompt.tabId !== tabId) return null;
+    const prompt = this.#currentPrompt(tabId);
+    if (!prompt) return null;
     const choices: ViewChoice[] = prompt.choices.map((choice) => ({
       id: choice.id,
       label: choice.label,
       tone: choice.tone,
       activate: this.#owners.guard(prompt.owner, () => {
-        if (this.#activeId === prompt.tabId) this.#finishPrompt(prompt, choice.value);
+        if (this.#activeId === prompt.tabId && this.#currentPrompt(tabId) === prompt) {
+          this.#finishPrompt(prompt, choice.value);
+        }
       }),
     }));
     return {
@@ -290,6 +307,29 @@ export class NativeApp {
       title: prompt.title,
       description: prompt.description,
       choices,
+      answer: prompt.allowText
+        ? {
+            text: prompt.answer,
+            edit: this.#owners.guard(prompt.owner, (event: EditEvent) => {
+              if (this.#activeId !== tabId || this.#currentPrompt(tabId) !== prompt) return;
+              if (!Number.isSafeInteger(event.from) || !Number.isSafeInteger(event.to) ||
+                  event.from < 0 || event.to < event.from || event.to > prompt.answer.length) return;
+              prompt.answer = prompt.answer.slice(0, event.from) + event.text +
+                prompt.answer.slice(event.to);
+              this.#changed();
+            }),
+            send: this.#owners.guard(prompt.owner, (event: SendEvent) => {
+              if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && event.text.trim()) {
+                this.#finishPrompt(prompt, event.text);
+              }
+            }),
+            submit: this.#owners.guard(prompt.owner, () => {
+              if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && prompt.answer.trim()) {
+                this.#finishPrompt(prompt, prompt.answer);
+              }
+            }),
+          }
+        : undefined,
     };
   }
 
@@ -303,6 +343,14 @@ export class NativeApp {
   #receive(tabId: string, event: HeadlessEvent): void {
     const tab = this.#tabs.find((candidate) => candidate.id === tabId);
     if (!tab || this.#closed) return;
+    if (tab.aborting && event.type === "error" && event.error === "Aborted") return;
+    if (tab.aborting && event.type === "turn-done") {
+      if (tab.transcript.activeMessageId === tab.aborting) tab.transcript.interrupt();
+      tab.aborting = null;
+      this.#changed();
+      return;
+    }
+    if (event.type === "error" && !tab.aborting) this.#cancelPrompts(tab.id);
     if (event.type === "chat-done" && tab.aborting) {
       // A streamed turn-done may already have advanced to the queued prompt.
       // Only drop the turn the user actually interrupted.
@@ -314,8 +362,9 @@ export class NativeApp {
     this.#changed();
   }
 
-  #stop(): void {
+  #stop(tabId: string): void {
     const tab = this.#current();
+    if (tab?.id !== tabId) return;
     if (!tab?.transcript.busy) return;
     tab.aborting = tab.transcript.activeMessageId;
     this.#cancelPrompts(tab.id);
@@ -325,7 +374,7 @@ export class NativeApp {
 
   #submit(tabId: string, input: string, native: boolean): void {
     const tab = this.#current();
-    if (!tab || tab.id !== tabId || this.#prompts.length) return;
+    if (!tab || tab.id !== tabId || this.#currentPrompt(tab.id)) return;
     if (native && input !== tab.draft.text) {
       // Native send may deliver before its last edit. Accept that only for a
       // previously-empty field, never a replay from the preceding submission.
@@ -361,7 +410,7 @@ export class NativeApp {
 
   #editNative(tabId: string, event: EditEvent): void {
     const tab = this.#current();
-    if (!tab || tab.id !== tabId || this.#prompts.length) return;
+    if (!tab || tab.id !== tabId || this.#currentPrompt(tab.id)) return;
     const draft = tab.draft;
     if (
       !Number.isSafeInteger(event.from) ||
@@ -389,18 +438,18 @@ export class NativeApp {
     const tab = this.#current();
     if (!tab) return "quit";
     if (key.ctrl && key.name === "c") {
-      if (this.#prompts.length) {
-        const prompt = this.#prompts.at(-1);
+      if (this.#currentPrompt(tab.id)) {
+        const prompt = this.#currentPrompt(tab.id);
         if (prompt) this.#finishPrompt(prompt, prompt.fallback);
       } else if (tab.transcript.busy) {
-        this.#stop();
+        this.#stop(tab.id);
       } else {
         return "quit";
       }
       return;
     }
     if (key.name === "escape") {
-      const prompt = this.#prompts.at(-1);
+      const prompt = this.#currentPrompt(tab.id);
       if (prompt) this.#finishPrompt(prompt, prompt.fallback);
       else if (tab.draft.text) {
         this.#rememberDraft(tab.draft);
@@ -411,7 +460,7 @@ export class NativeApp {
       }
       return;
     }
-    if (this.#prompts.length) return;
+    if (this.#currentPrompt(tab.id)) return;
     if (key.ctrl && key.name === "d" && !tab.draft.text) return "quit";
     if (key.ctrl && key.name === "n") {
       this.#addTab();
@@ -485,7 +534,7 @@ export class NativeApp {
   }
 
   #event(event: TspEvent): "quit" | void {
-    if (event.ev === "gone" && this.#surface?.closed) return "quit";
+    if (event.ev === "gone") return "quit";
     if (event.ev === "error") {
       this.#current()?.transcript.notice("TSP: " + event.msg);
       this.#changed();
@@ -506,6 +555,11 @@ export class NativeApp {
     const tab = this.#current();
     if (!surface || surface.closed || !tab) return;
     const id = tab.id;
+    const epoch = this.#viewEpoch;
+    const owns = () =>
+      !this.#closed && !surface.closed && this.#viewEpoch === epoch &&
+      this.#activeId === id && this.#current() === tab;
+    const interactiveId = id + "-" + String(epoch);
     surface.render(
       nativeView(
         {
@@ -513,6 +567,7 @@ export class NativeApp {
           model: this.config.defaultModel,
           tabs: this.#tabs.map((entry) => ({ id: entry.id, label: entry.label })),
           activeId: id,
+          interactiveId,
           busy: tab.transcript.busy,
           steps: tab.transcript.steps,
           queued: tab.transcript.queued.length,
@@ -521,20 +576,20 @@ export class NativeApp {
           modal: this.#modal(id),
         },
         {
-          switchTab: (nextId) => this.#select(nextId),
-          newTab: () => this.#addTab(),
-          closeTab: () => void this.#closeActive(),
-          stop: () => this.#stop(),
-          submit: () => this.#submit(id, tab.draft.text, false),
-          edit: (event: EditEvent) => this.#editNative(id, event),
-          send: (event: SendEvent) => this.#submit(id, event.text, true),
-          undo: () => this.#undo(id),
+          switchTab: (nextId) => { if (owns()) this.#select(nextId); },
+          newTab: () => { if (owns()) this.#addTab(); },
+          closeTab: () => { if (owns()) void this.#closeActive(tab); },
+          stop: () => { if (owns()) this.#stop(id); },
+          submit: () => { if (owns()) this.#submit(id, tab.draft.text, false); },
+          edit: (event: EditEvent) => { if (owns()) this.#editNative(id, event); },
+          send: (event: SendEvent) => { if (owns()) this.#submit(id, event.text, true); },
+          undo: () => { if (owns()) this.#undo(id); },
         },
       ),
     );
-    if (this.#focusedTab !== id) {
-      surface.focus("dock.composer");
-      this.#focusedTab = id;
+    if (this.#focusedTab !== interactiveId) {
+      surface.focus("dock.composer-" + interactiveId);
+      this.#focusedTab = interactiveId;
     }
   }
 }

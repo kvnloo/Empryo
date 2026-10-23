@@ -12,16 +12,25 @@ import { CURRENT_VERSION } from "../../core/version.js";
 import { NativeApp } from "./native-app.js";
 
 export async function startNativeTern(): Promise<boolean> {
+  // CLI resume/wizard/plugin intent belongs to OpenTUI until native supports it.
+  if (process.argv.slice(2).length > 0) return false;
+  const { shouldRunAddonWizard } = await import("../../core/setup/addon-wizard.js");
+  if (shouldRunAddonWizard()) return false;
   const config = mergeConfigs(loadConfig(), loadProjectConfig(getCwd()));
   // Keep OpenTUI's first-run setup instead of starting an embedded agent
   // that would exit the process without a configured model.
   if (!config.defaultModel || config.defaultModel === "none") return false;
 
-  const session = await connect({
-    app: "empryo",
-    version: CURRENT_VERSION,
-    features: ["edit", "undo", "send"],
-  });
+  let session;
+  try {
+    session = await connect({
+      app: "empryo",
+      version: CURRENT_VERSION,
+      features: ["edit", "undo", "send"],
+    });
+  } catch {
+    return false;
+  }
   if (!session) return false;
 
   await new NativeApp(session, config).run();
