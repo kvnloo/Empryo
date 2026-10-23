@@ -136,6 +136,7 @@ describe("native Tern SDK renderable projections", () => {
         model: "provider/model",
         tabs: [{ id: "a", label: "TAB-1" }],
         activeId: "a",
+        interactiveId: "a-1",
         busy: false,
         steps: 0,
         queued: 0,
@@ -160,7 +161,7 @@ describe("native Tern SDK renderable projections", () => {
       },
     );
     const editor = view.dock.children.find((child) => child.kind === "editor");
-    expect(editor?.props.key).toBe("composer");
+    expect(editor?.props.key).toBe("composer-a-1");
     expect(editor?.props.text).toBe("hello");
     await editor?.handlers?.onEdit?.({} as never);
     await editor?.handlers?.onSend?.({} as never);

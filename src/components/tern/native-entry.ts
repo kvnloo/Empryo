@@ -11,9 +11,14 @@ import { getCwd } from "../../core/cwd.js";
 import { CURRENT_VERSION } from "../../core/version.js";
 import { NativeApp } from "./native-app.js";
 
+/** Anything requiring CLI argument processing stays with OpenTUI. */
+export function nativeCliEligible(args: readonly string[]): boolean {
+  return args.length === 0;
+}
+
 export async function startNativeTern(): Promise<boolean> {
   // CLI resume/wizard/plugin intent belongs to OpenTUI until native supports it.
-  if (process.argv.slice(2).length > 0) return false;
+  if (!nativeCliEligible(process.argv.slice(2))) return false;
   const { shouldRunAddonWizard } = await import("../../core/setup/addon-wizard.js");
   if (shouldRunAddonWizard()) return false;
   const config = mergeConfigs(loadConfig(), loadProjectConfig(getCwd()));

@@ -14,7 +14,7 @@ import type {
 } from "../../types/index.js";
 import { OverlayOwners, SubmissionGate } from "./action-guards.js";
 import { Switches } from "./flow.js";
-import { NativeRunner } from "./native-runner.js";
+import { NativeRunner, type RunnerOptions } from "./native-runner.js";
 import { NativeTranscript } from "./native-transcript.js";
 import { nativeView, type ViewChoice, type ViewModal } from "./native-view.js";
 
@@ -74,6 +74,10 @@ export class NativeApp {
   constructor(
     private readonly session: Session,
     private readonly config: AppConfig,
+    private readonly makeRunner: (
+      options: RunnerOptions,
+      emit: (event: HeadlessEvent) => void,
+    ) => NativeRunner = (options, emit) => new NativeRunner(options, emit),
   ) {}
 
   async run(): Promise<void> {
@@ -117,7 +121,7 @@ export class NativeApp {
       id,
       label,
       transcript,
-      runner: new NativeRunner(
+      runner: this.makeRunner(
         {
           tabId: id,
           label,
