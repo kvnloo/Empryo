@@ -218,7 +218,7 @@ def live_acceptance(workspace: Path, env: dict[str, str], requests: Path, record
                 "the actual Empryo tool definition was not offered")
         require(any("TRN3_OWNED_CONTENT" in json.dumps(row) for row in rows),
                 "the real read tool did not return the owned fixture's bytes")
-        pane.until(lambda: "SYNTHETIC_READ_DONE" in str(pane.messages),
+        pane.until(lambda: "READ_DONE" in str(pane.messages),
                    "streamed post-tool synthetic answer")
         # The terminal, not an in-process mock, drops the real surface.
         pane.message("e", {"ev": "gone", "sf": "empryo", "ids": ["empryo"]})
