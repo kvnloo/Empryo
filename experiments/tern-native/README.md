@@ -197,8 +197,8 @@ project files are touched (preserve the repo path before changing cwd):
 EMPRYO_ROOT="$PWD"
 TRN3_ROOT="$(mktemp -d)"
 mkdir -p "$TRN3_ROOT/home/.soulforge" "$TRN3_ROOT/workspace"
-printf '%s\\n' '{"defaultModel":"ollama/trn3-fixture","addonsPromptShown":true,"repoMap":false,"webSearch":false,"telemetry":false}' > "$TRN3_ROOT/home/.soulforge/config.json"
-printf 'TRN3_OWNED_CONTENT\\n' > "$TRN3_ROOT/workspace/fixture.txt"
+printf '%s\n' '{"defaultModel":"ollama/trn3-fixture","addonsPromptShown":true,"repoMap":false,"webSearch":false,"telemetry":false}' > "$TRN3_ROOT/home/.soulforge/config.json"
+printf 'TRN3_OWNED_CONTENT\n' > "$TRN3_ROOT/workspace/fixture.txt"
 cd "$TRN3_ROOT/workspace"
 HOME="$TRN3_ROOT/home" SOULFORGE_TERN=1 SOULFORGE_NO_PROMPT=1 SOULFORGE_NO_REPOMAP=1 OLLAMA_HOST=http://127.0.0.1:11439 TERN_TSP_RECORD="$TRN3_ROOT/tsp.jsonl" bun run "$EMPRYO_ROOT/src/boot.tsx"
 ```
