@@ -19,7 +19,12 @@ export interface ViewModal {
   title: string;
   description: string;
   choices: readonly ViewChoice[];
-  answer?: { text: string; edit: (event: EditEvent) => void; send: (event: SendEvent) => void; submit: () => void };
+  answer?: {
+    text: string;
+    edit: (event: EditEvent) => void;
+    send: (event: SendEvent) => void;
+    submit: () => void;
+  };
 }
 
 export interface NativeViewState {
@@ -87,8 +92,16 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
   const dock = node("col", { key: "dock", role: "omp.dock", gap: "xs" }, [
     node("row", { key: "tabs", role: "omp.tabs", gap: "sm" }, [
       ...tabs,
-      node("text", { key: "new-" + state.interactiveId, onClick: actions.newTab, tone: "accent" }, "+"),
-      node("text", { key: "close-" + state.interactiveId, onClick: actions.closeTab, tone: "muted" }, "×"),
+      node(
+        "text",
+        { key: "new-" + state.interactiveId, onClick: actions.newTab, tone: "accent" },
+        "+",
+      ),
+      node(
+        "text",
+        { key: "close-" + state.interactiveId, onClick: actions.closeTab, tone: "muted" },
+        "×",
+      ),
     ]),
     node("editor", {
       key: "composer-" + state.interactiveId,
@@ -111,7 +124,11 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
       }),
       node(
         "seg",
-        { key: "action-" + state.interactiveId, side: "right", onClick: state.busy ? actions.stop : actions.submit },
+        {
+          key: "action-" + state.interactiveId,
+          side: "right",
+          onClick: state.busy ? actions.stop : actions.submit,
+        },
         state.busy ? "Stop (Ctrl+C)" : "Send",
       ),
     ]),
@@ -148,12 +165,16 @@ export function nativeView(state: NativeViewState, actions: NativeViewActions) {
                       onEdit: modal.answer.edit,
                       onSend: modal.answer.send,
                     }),
-                    node("text", {
-                      key: "submit-answer-" + modal.id,
-                      role: "omp.modal.action",
-                      tone: "accent",
-                      onClick: modal.answer.submit,
-                    }, "Submit answer"),
+                    node(
+                      "text",
+                      {
+                        key: "submit-answer-" + modal.id,
+                        role: "omp.modal.action",
+                        tone: "accent",
+                        onClick: modal.answer.submit,
+                      },
+                      "Submit answer",
+                    ),
                   ]
                 : []),
               node(

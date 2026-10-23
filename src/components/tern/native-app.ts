@@ -314,26 +314,40 @@ export class NativeApp {
       answer: prompt.allowText
         ? {
             text: prompt.answer,
-            edit: (event: EditEvent) => this.#owners.guard(prompt.owner, () => {
-              if (this.#activeId !== tabId || this.#currentPrompt(tabId) !== prompt) return;
-              if (
-                !Number.isSafeInteger(event.from) ||
-                !Number.isSafeInteger(event.to) ||
-                event.from < 0 ||
-                event.to < event.from ||
-                event.to > prompt.answer.length
-              ) return;
-              prompt.answer = prompt.answer.slice(0, event.from) + event.text +
-                prompt.answer.slice(event.to);
-              this.#changed();
-            })(),
-            send: (event: SendEvent) => this.#owners.guard(prompt.owner, () => {
-              if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && event.text.trim()) {
-                this.#finishPrompt(prompt, event.text);
-              }
-            })(),
+            edit: (event: EditEvent) =>
+              this.#owners.guard(prompt.owner, () => {
+                if (this.#activeId !== tabId || this.#currentPrompt(tabId) !== prompt) return;
+                if (
+                  !Number.isSafeInteger(event.from) ||
+                  !Number.isSafeInteger(event.to) ||
+                  event.from < 0 ||
+                  event.to < event.from ||
+                  event.to > prompt.answer.length
+                ) {
+                  return;
+                }
+                prompt.answer =
+                  prompt.answer.slice(0, event.from) +
+                  event.text +
+                  prompt.answer.slice(event.to);
+                this.#changed();
+              })(),
+            send: (event: SendEvent) =>
+              this.#owners.guard(prompt.owner, () => {
+                if (
+                  this.#activeId === tabId &&
+                  this.#currentPrompt(tabId) === prompt &&
+                  event.text.trim()
+                ) {
+                  this.#finishPrompt(prompt, event.text);
+                }
+              })(),
             submit: this.#owners.guard(prompt.owner, () => {
-              if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && prompt.answer.trim()) {
+              if (
+                this.#activeId === tabId &&
+                this.#currentPrompt(tabId) === prompt &&
+                prompt.answer.trim()
+              ) {
                 this.#finishPrompt(prompt, prompt.answer);
               }
             }),
@@ -566,9 +580,13 @@ export class NativeApp {
     const id = tab.id;
     const epoch = this.#viewEpoch;
     const owns = () =>
-      !this.#closed && !surface.closed && this.#viewEpoch === epoch &&
-      this.#activeId === id && this.#current() === tab;
+      !this.#closed &&
+      !surface.closed &&
+      this.#viewEpoch === epoch &&
+      this.#activeId === id &&
+      this.#current() === tab;
     const interactiveId = id + "-" + String(epoch);
+    const modal = this.#modal(id);
     surface.render(
       nativeView(
         {
@@ -582,23 +600,42 @@ export class NativeApp {
           queued: tab.transcript.queued.length,
           draft: tab.draft.text,
           cursor: tab.draft.cursor,
-          modal: this.#modal(id),
+          modal,
         },
         {
-          switchTab: (nextId) => { if (owns()) this.#select(nextId); },
-          newTab: () => { if (owns()) this.#addTab(); },
-          closeTab: () => { if (owns()) void this.#closeActive(tab); },
-          stop: () => { if (owns()) this.#stop(id); },
-          submit: () => { if (owns()) this.#submit(id, tab.draft.text, false); },
-          edit: (event: EditEvent) => { if (owns()) this.#editNative(id, event); },
-          send: (event: SendEvent) => { if (owns()) this.#submit(id, event.text, true); },
-          undo: () => { if (owns()) this.#undo(id); },
+          switchTab: (nextId) => {
+            if (owns()) this.#select(nextId);
+          },
+          newTab: () => {
+            if (owns()) this.#addTab();
+          },
+          closeTab: () => {
+            if (owns()) void this.#closeActive(tab);
+          },
+          stop: () => {
+            if (owns()) this.#stop(id);
+          },
+          submit: () => {
+            if (owns()) this.#submit(id, tab.draft.text, false);
+          },
+          edit: (event: EditEvent) => {
+            if (owns()) this.#editNative(id, event);
+          },
+          send: (event: SendEvent) => {
+            if (owns()) this.#submit(id, event.text, true);
+          },
+          undo: () => {
+            if (owns()) this.#undo(id);
+          },
         },
       ),
     );
-    if (this.#focusedTab !== interactiveId) {
-      surface.focus("dock.composer-" + interactiveId);
-      this.#focusedTab = interactiveId;
+    const focusId = modal?.answer
+      ? "layers." + modal.id + ".answer-" + modal.id
+      : "dock.composer-" + interactiveId;
+    if (this.#focusedTab !== focusId) {
+      surface.focus(focusId);
+      this.#focusedTab = focusId;
     }
   }
 }

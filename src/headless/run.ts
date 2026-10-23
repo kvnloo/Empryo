@@ -301,9 +301,10 @@ export function headlessToolResult(part: {
     raw !== null && typeof raw === "object" && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)
       : null;
-  const success = typeof payload?.success === "boolean"
-    ? payload.success
-    : !(raw instanceof Error) && typeof payload?.error !== "string";
+  const success =
+    typeof payload?.success === "boolean"
+      ? payload.success
+      : !(raw instanceof Error) && typeof payload?.error !== "string";
   const value = payload && "output" in payload ? payload.output : raw;
   let output: string;
   if (typeof value === "string") output = value;
@@ -314,12 +315,15 @@ export function headlessToolResult(part: {
       output = String(value);
     }
   }
-  const error = raw instanceof Error ? raw.message :
-    typeof payload?.error === "string" ? payload.error : undefined;
+  const error =
+    raw instanceof Error
+      ? raw.message
+      : typeof payload?.error === "string"
+        ? payload.error
+        : undefined;
   const summaryValue = error ?? output;
-  const summary = summaryValue.length > 200
-    ? summaryValue.slice(0, 200) + "…"
-    : summaryValue;
+  const summary =
+    summaryValue.length > 200 ? summaryValue.slice(0, 200) + "…" : summaryValue;
   return {
     type: "tool-result",
     tool: part.toolName,
