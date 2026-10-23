@@ -43,7 +43,27 @@ function optionalTarget(args: Record<string, unknown>): string | undefined {
     const candidate = args[key];
     if (typeof candidate === "string" && candidate) return candidate;
   }
-  return undefined;
+  const files = Array.isArray(args.files) ? args.files : [args.files];
+  let firstPath: string | undefined;
+  let count = 0;
+  for (const file of files) {
+    if (!file || typeof file !== "object" || Array.isArray(file)) continue;
+    const path = (file as Record<string, unknown>).path;
+    if (typeof path !== "string" || !path.trim()) continue;
+    firstPath ??= path;
+    count++;
+  }
+  if (firstPath === undefined || count === 1) return firstPath;
+  let preview = firstPath;
+  if (firstPath.length > 120) {
+    let end = 119;
+    const before = firstPath.charCodeAt(end - 1);
+    const after = firstPath.charCodeAt(end);
+    // A compact preview must not create a lone UTF-16 surrogate.
+    if (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) end--;
+    preview = `${firstPath.slice(0, end)}…`;
+  }
+  return `${preview} (+${count - 1} more)`;
 }
 
 function textNode(id: string, text: string, role: string, kind: "md" | "text" = "md"): NativeNode {
