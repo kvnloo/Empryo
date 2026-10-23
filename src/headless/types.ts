@@ -1,3 +1,8 @@
+import type {
+  AgentStatsEvent,
+  MultiAgentEvent,
+  SubagentStep,
+} from "../core/agents/subagent-events.js";
 import type { ForgeMode, InteractiveCallbacks } from "../types/index.js";
 
 export interface HeadlessRunOptions {
@@ -43,7 +48,20 @@ export type HeadlessEvent =
   | { type: "ready" }
   | { type: "text"; content: string }
   | { type: "tool-call"; tool: string; toolCallId?: string; input?: Record<string, unknown> }
-  | { type: "tool-result"; tool: string; toolCallId?: string; summary: string }
+  | {
+      type: "tool-result";
+      tool: string;
+      toolCallId?: string;
+      /** Legacy compact output for existing JSONL consumers. */
+      summary: string;
+      /** Complete tool output; no 200-character truncation. */
+      output?: string;
+      success?: boolean;
+      error?: string;
+    }
+  | { type: "subagent-event"; event: MultiAgentEvent }
+  | { type: "subagent-step"; event: SubagentStep }
+  | { type: "subagent-stats"; event: AgentStatsEvent }
   | {
       type: "step";
       step: number;

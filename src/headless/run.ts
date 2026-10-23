@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { LanguageModel, ModelMessage } from "ai";
 import { normalizePath } from "../core/agents/agent-bus.js";
 import { createForgeAgent } from "../core/agents/index.js";
+import { onAgentStats, onMultiAgentEvent, onSubagentStep } from "../core/agents/subagent-events.js";
 import type { SharedCacheRef } from "../core/agents/subagent-tools.js";
 import { ContextManager } from "../core/context/manager.js";
 import { getCwd } from "../core/cwd.js";
@@ -68,6 +69,9 @@ async function setupAgent(
     callbacks?: InteractiveCallbacks;
     onApproveOutsideCwd?: (toolName: string, path: string) => Promise<boolean>;
     onApproveDestructive?: (description: string) => Promise<boolean>;
+    tabId?: string;
+    tabLabel?: string;
+    embedded?: boolean;
   },
   merged: AppConfig,
 ): Promise<AgentEnv> {
@@ -77,8 +81,11 @@ async function setupAgent(
   const showProgress = !opts.json && !opts.events && !opts.quiet;
 
   const modelId = opts.modelId ?? merged.defaultModel;
-  if (modelId === "none") {
-    stderrError("No model configured. Pass --model provider/model or set defaultModel in config.");
+  if (!modelId || modelId === "none") {
+    const message =
+      "No model configured. Pass --model provider/model or set defaultModel in config.";
+    if (opts.embedded) throw new Error(message);
+    stderrError(message);
     process.exit(EXIT_ERROR);
   }
 
@@ -86,6 +93,7 @@ async function setupAgent(
   try {
     model = resolveModel(modelId);
   } catch (err) {
+    if (opts.embedded) throw err;
     stderrError(err instanceof Error ? err.message : String(err));
     process.exit(EXIT_ERROR);
   }
@@ -246,6 +254,8 @@ async function setupAgent(
     providerOptions: providerOpts.providerOptions,
     headers: providerOpts.headers,
     agentFeatures: merged.agentFeatures,
+    tabId: opts.tabId,
+    tabLabel: opts.tabLabel,
     sharedCacheRef,
     cwd,
     disablePruning: !["subagents", "both"].includes(
@@ -278,6 +288,76 @@ interface TurnResult {
   exitCode: number;
 }
 
+/**
+ * Turn a real AI SDK tool-result part into the existing JSONL event contract.
+ * Source is the tool's ToolResult payload, not a label or a guessed exit code.
+ */
+export function headlessToolResult(part: {
+  toolName: string;
+  toolCallId?: string;
+  output: unknown;
+}): Extract<HeadlessEvent, { type: "tool-result" }> {
+  const raw = part.output;
+  const payload =
+    raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : null;
+  const success =
+    typeof payload?.success === "boolean"
+      ? payload.success
+      : !(raw instanceof Error) && typeof payload?.error !== "string";
+  const value = payload && "output" in payload ? payload.output : raw;
+  let output: string;
+  if (typeof value === "string") output = value;
+  else {
+    try {
+      output = value === undefined ? "" : (JSON.stringify(value) ?? String(value));
+    } catch {
+      output = String(value);
+    }
+  }
+  const error =
+    raw instanceof Error
+      ? raw.message
+      : typeof payload?.error === "string"
+        ? payload.error
+        : undefined;
+  const summaryValue = error ?? output;
+  const summary = summaryValue.length > 200 ? summaryValue.slice(0, 200) + "…" : summaryValue;
+  return {
+    type: "tool-result",
+    tool: part.toolName,
+    toolCallId: part.toolCallId,
+    summary,
+    output,
+    success,
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+/** Bind the real core event bus to exactly the tool IDs owned by this stream. */
+export function bridgeSubagentEvents(
+  emit: (event: HeadlessEvent) => void,
+  ownedToolCallIds: ReadonlySet<string>,
+  enabled = true,
+): () => void {
+  if (!enabled) return () => {};
+  const offStep = onSubagentStep((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-step", event });
+  });
+  const offAgent = onMultiAgentEvent((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-event", event });
+  });
+  const offStats = onAgentStats((event) => {
+    if (ownedToolCallIds.has(event.parentToolCallId)) emit({ type: "subagent-stats", event });
+  });
+  return () => {
+    offStep();
+    offAgent();
+    offStats();
+  };
+}
+
 async function streamTurn(
   agent: ReturnType<typeof createForgeAgent>,
   messages: ModelMessage[],
@@ -307,6 +387,14 @@ async function streamTurn(
   };
   const toolCalls: string[] = [];
   const filesEdited = new Set<string>();
+  // The actual SDK toolCallId correlates concurrent subagent events to this
+  // stream/tab. Never attach an unrelated agent event from another tab.
+  const ownedToolCallIds = new Set<string>();
+  const releaseAgentEvents = bridgeSubagentEvents(
+    emit,
+    ownedToolCallIds,
+    reporting.events === true,
+  );
   let error: string | undefined;
   let exitCode = EXIT_OK;
 
@@ -349,6 +437,7 @@ async function streamTurn(
       } else if (part.type === "tool-call") {
         toolCalls.push(part.toolName);
         const partInput = part as { input?: Record<string, unknown>; toolCallId?: string };
+        if (partInput.toolCallId) ownedToolCallIds.add(partInput.toolCallId);
         if (reporting.events) {
           emit({
             type: "tool-call",
@@ -372,20 +461,13 @@ async function streamTurn(
         }
       } else if (part.type === "tool-result") {
         if (reporting.events) {
-          const raw = part.output;
-          let summary: string;
-          if (raw && typeof raw === "object" && "output" in raw) {
-            const out = String((raw as Record<string, unknown>).output);
-            summary = out.length > 200 ? `${out.slice(0, 200)}…` : out;
-          } else {
-            summary = String(raw).slice(0, 200);
-          }
-          emit({
-            type: "tool-result",
-            tool: part.toolName,
-            toolCallId: (part as { toolCallId?: string }).toolCallId,
-            summary,
-          });
+          emit(
+            headlessToolResult({
+              toolName: part.toolName,
+              toolCallId: (part as { toolCallId?: string }).toolCallId,
+              output: part.output,
+            }),
+          );
         }
       } else if (part.type === "finish-step") {
         steps++;
@@ -415,6 +497,8 @@ async function streamTurn(
     }
     if (reporting.showProgress) stderrError(error);
     if (reporting.events) emit({ type: "error", error });
+  } finally {
+    releaseAgentEvents();
   }
 
   return { output, steps, tokens, toolCalls, filesEdited: [...filesEdited], error, exitCode };
