@@ -1,6 +1,6 @@
 # Empryo × Tern native UI — downstream preview
 
-**Status:** porting workbench only; not integrated with Empryo v3 and **not a working Empryo frontend**. The current Empryo v3 UI is private, and Empryo's public `main` is SoulForge v2. No upstream PR is proposed before maintainer agreement.
+**Status:** opt-in native TSP frontend on the **public SoulForge v2** runtime, with a handshake fallback to OpenTUI. The Empryo v3 UI is private and is **not** integrated. The archived Hermes preview remains a porting workbench. No upstream PR is proposed before maintainer agreement.
 
 ## Source and credit
 - Source: [Hermes Tern preview `ba430cf6cb567122134a6daa61a227a9c33e36c7`](https://github.com/kvnloo/hermes-agent/tree/ba430cf6cb567122134a6daa61a227a9c33e36c7/ui-tsp).
@@ -30,3 +30,42 @@ bun test tests/tern-native.test.ts
 These checks validate only the renderer-neutral projection and guards, not a TSP handshake, live controller, private-v3 integration, recording/replay or OpenTUI fallback. Do not call a green check a working frontend.
 
 The architecture proposal is published in [upstream Ideas Discussion #243](https://github.com/proxysoul/Empryo/discussions/243), following CONTRIBUTING. Maintainer guidance on a v3 integration point is still required before an implementation PR. The source draft in `UPSTREAM_ISSUE.md` remains historical; the earlier connector403 is not the current publication status.
+
+
+## Native frontend on the public v2 runtime
+
+The opt-in boot seam in src/boot.tsx dynamically loads
+src/components/tern/native-entry.ts. The Stencil SDK negotiates with the
+terminal before OpenTUI's splash or renderer. An absent TSP handshake
+returns to the existing OpenTUI path. Leave SOULFORGE_TERN unset to
+force the classic interface.
+
+native-app.ts owns the TSP surface, composer, tab views, queued prompts
+and fail-closed approval overlays. native-runner.ts calls Empryo's own
+headless/run.ts runChat to preserve its providers, tools, safety hooks
+and session persistence. Native UI elements are projected by
+native-transcript.ts and native-view.ts from typed HeadlessEvents.
+Hermes' omp.* semantic roles and stable IDs are reused, not its backend.
+Tern handles native events, diffing and credit control.
+
+In a terminal with TSP support, after configuring a default provider:
+
+    bun install --frozen-lockfile
+    SOULFORGE_TERN=1 TERN_TSP_RECORD=/tmp/empryo-tsp.jsonl bun run dev
+
+To verify an intentional missing-protocol fallback:
+
+    SOULFORGE_TERN=1 TERN_TSP=0 bun run dev
+
+Enter sends, Shift+Enter inserts a newline, Ctrl+C interrupts,
+Ctrl+N adds a tab, Ctrl+Tab switches tabs, Ctrl+W closes a tab,
+and Ctrl+D on an empty composer exits. Native edit/send/undo
+and keyboard input share one guarded draft. Late overlays or
+wrong-tab callbacks cannot approve operations; cancelling and
+closing deny unresolved permissions.
+
+Boundary: the public headless event stream currently lacks rich live
+subagent trees, full diff/media payloads and terminal editor handoff.
+These are subsequent native-parity slices, not features claimed here.
+OpenTUI remains the complete fallback. Empryo v3 integration still
+requires a published maintainer extension point.
