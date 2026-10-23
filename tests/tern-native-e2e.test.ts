@@ -144,6 +144,51 @@ function recorded(path: string): Recorded[] {
     .map((line) => JSON.parse(line) as Recorded);
 }
 
+/** Replay real recorded TSP ops, not just the in-memory view object. */
+function replayRecordedFrames(log: readonly Frame[]): {
+  nodes: Map<string, { kind: string; props: Record<string, unknown> }>;
+  focus: string | null;
+} {
+  const nodes = new Map<string, { kind: string; props: Record<string, unknown> }>();
+  let focus: string | null = null;
+  const add = (wire: WireNode): void => {
+    nodes.set(wire.id, { kind: wire.k, props: { ...wire.p } });
+    for (const child of wire.c ?? []) add(child);
+  };
+  for (const frame of log) {
+    for (const op of frame.ops) {
+      const id = typeof op[1] === "string" ? op[1] : "";
+      if (op[0] === "add") {
+        add(op[4] as WireNode);
+      } else if (op[0] === "del") {
+        for (const key of nodes.keys()) {
+          if (key === id || key.startsWith(id + ".")) nodes.delete(key);
+        }
+      } else if (op[0] === "set") {
+        const target = nodes.get(id);
+        if (target) Object.assign(target.props, op[2] as Record<string, unknown>);
+      } else if (op[0] === "text") {
+        const target = nodes.get(id);
+        if (target) {
+          const previous = typeof target.props.text === "string" ? target.props.text : "";
+          const value = String(op[3] ?? "");
+          target.props.text = op[2] === "append" ? previous + value : value;
+        }
+      } else if (op[0] === "splice") {
+        const target = nodes.get(id);
+        if (target) {
+          const previous = typeof target.props.text === "string" ? target.props.text : "";
+          target.props.text = previous.slice(0, Number(op[2])) +
+            String(op[4] ?? "") + previous.slice(Number(op[2]) + Number(op[3]));
+        }
+      } else if (op[0] === "focus") {
+        focus = op[1] as string | null;
+      }
+    }
+  }
+  return { nodes, focus };
+}
+
 describe("real Tern connect(), Session and Surface protocol", () => {
   it("refuses non-TTY and TERN_TSP=0 without touching the input", async () => {
     const host = connectedDevice();
@@ -229,6 +274,14 @@ describe("real Tern connect(), Session and Surface protocol", () => {
     expect(log.some((item) => item.dir === "in" && item.verb === "e" &&
       (item.body as { ev: string }).ev === "ack")).toBe(true);
     expect(log.some((item) => item.dir === "out" && item.verb === "x")).toBe(true);
+    const recordedFrames = log.filter((item) => item.dir === "out" && item.verb === "f")
+      .map((item) => item.body as Frame);
+    expect(recordedFrames).toEqual(frames(host.output));
+    const replayed = replayRecordedFrames(recordedFrames);
+    expect(replayed.nodes.get("main.stable")?.props.text).toBe("FINAL");
+    expect(replayed.nodes.get("main.new")?.props.text).toBe("LATEST_ONLY");
+    expect(replayed.focus).toBe("main.new");
+    expect(JSON.stringify([...replayed.nodes.values()])).not.toContain("INTERMEDIATE_SHOULD_NOT_APPEAR");
   });
 });
 
