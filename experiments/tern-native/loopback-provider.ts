@@ -42,7 +42,7 @@ function completion(req: ChatRequest): Response {
   const prompt = stringContent(originalPrompt?.content);
   const readFixture = prompt.includes("TRN3_READ_FILE");
   const toolResults = messages.filter((message) => message.role === "tool");
-  const readAvailable = req.tools?.some((entry) => entry.function?.name === "read_file") ?? false;
+  const readAvailable = req.tools?.some((entry) => entry.function?.name === "read") ?? false;
 
   // A model-produced tool invocation: the actual Empryo tool validates and
   // reads fixture.txt inside the operator's isolated working directory.
@@ -67,7 +67,7 @@ function completion(req: ChatRequest): Response {
         delta: {
           tool_calls: [{
             index: 0, id: "call-trn3-read", type: "function",
-            function: { name: "read_file", arguments: JSON.stringify({ path: "fixture.txt" }) },
+            function: { name: "read", arguments: JSON.stringify({ files: [{ path: "fixture.txt" }] }) },
           }],
         },
         finish_reason: null,
