@@ -310,19 +310,24 @@ export class NativeApp {
       answer: prompt.allowText
         ? {
             text: prompt.answer,
-            edit: this.#owners.guard(prompt.owner, (event: EditEvent) => {
+            edit: (event: EditEvent) => this.#owners.guard(prompt.owner, () => {
               if (this.#activeId !== tabId || this.#currentPrompt(tabId) !== prompt) return;
-              if (!Number.isSafeInteger(event.from) || !Number.isSafeInteger(event.to) ||
-                  event.from < 0 || event.to < event.from || event.to > prompt.answer.length) return;
+              if (
+                !Number.isSafeInteger(event.from) ||
+                !Number.isSafeInteger(event.to) ||
+                event.from < 0 ||
+                event.to < event.from ||
+                event.to > prompt.answer.length
+              ) return;
               prompt.answer = prompt.answer.slice(0, event.from) + event.text +
                 prompt.answer.slice(event.to);
               this.#changed();
-            }),
-            send: this.#owners.guard(prompt.owner, (event: SendEvent) => {
+            })(),
+            send: (event: SendEvent) => this.#owners.guard(prompt.owner, () => {
               if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && event.text.trim()) {
                 this.#finishPrompt(prompt, event.text);
               }
-            }),
+            })(),
             submit: this.#owners.guard(prompt.owner, () => {
               if (this.#activeId === tabId && this.#currentPrompt(tabId) === prompt && prompt.answer.trim()) {
                 this.#finishPrompt(prompt, prompt.answer);

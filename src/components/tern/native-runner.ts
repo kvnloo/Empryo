@@ -80,29 +80,31 @@ export class NativeRunner {
       while (!this.#closed) {
         const ctl = this.#controller;
         try {
-          if (!ctl.signal.aborted) await execute(
-          {
-            tabId: this.options.tabId,
-            tabLabel: this.options.label,
-            mode: this.options.mode,
-            sessionId: this.#sessionId,
-            quiet: true,
-            embedded: true,
-            signal: ctl.signal,
-            readPrompt: () => this.#read(),
-            callbacks: this.options.callbacks,
-            onApproveDestructive: this.options.onApproveDestructive,
-            onApproveOutsideCwd: this.options.onApproveOutsideCwd,
-            onEvent: (event) => {
-              if (event.type === "chat-done" && event.sessionId) {
-                this.#sessionId = event.sessionId;
-              }
-              if (event.type === "error" && event.error !== "Aborted") reportedFailure = true;
-              if (!this.#closed) this.emit(event);
-            },
-          },
-          this.options.config,
-          );
+          if (!ctl.signal.aborted) {
+            await execute(
+              {
+                tabId: this.options.tabId,
+                tabLabel: this.options.label,
+                mode: this.options.mode,
+                sessionId: this.#sessionId,
+                quiet: true,
+                embedded: true,
+                signal: ctl.signal,
+                readPrompt: () => this.#read(),
+                callbacks: this.options.callbacks,
+                onApproveDestructive: this.options.onApproveDestructive,
+                onApproveOutsideCwd: this.options.onApproveOutsideCwd,
+                onEvent: (event) => {
+                  if (event.type === "chat-done" && event.sessionId) {
+                    this.#sessionId = event.sessionId;
+                  }
+                  if (event.type === "error" && event.error !== "Aborted") reportedFailure = true;
+                  if (!this.#closed) this.emit(event);
+                },
+              },
+              this.options.config,
+            );
+          }
         } catch (error) {
           if (!ctl.signal.aborted && !this.#closed) {
             reportedFailure = true;
