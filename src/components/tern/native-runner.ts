@@ -45,7 +45,7 @@ export class NativeRunner {
   }
 
   start(): void {
-    if (!this.#task) this.#task = this.#loop();
+    if (!this.#task && !this.#closed && !this.#ended) this.#task = this.#loop();
   }
 
   enqueue(text: string): boolean {
@@ -80,7 +80,18 @@ export class NativeRunner {
       while (!this.#closed) {
         const ctl = this.#controller;
         try {
-          if (!ctl.signal.aborted) {
+          if (ctl.signal.aborted) {
+            // Initialization was cancelled before the engine could report a
+            // saved turn. Settle the original view before starting its successor.
+            if (!this.#closed) {
+              this.emit({
+                type: "chat-done",
+                turns: 0,
+                tokens: { input: 0, output: 0, cacheRead: 0 },
+                sessionId: this.#sessionId,
+              });
+            }
+          } else {
             await execute(
               {
                 tabId: this.options.tabId,

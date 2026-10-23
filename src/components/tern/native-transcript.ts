@@ -5,8 +5,7 @@
  */
 import type { HeadlessEvent } from "../../headless/types.js";
 import type { ChatMessage, MessageSegment, ToolCall } from "../../types/index.js";
-import type { NativeNode } from "./projection.js";
-import { projectTranscript } from "./projection.js";
+import { type NativeNode, projectTranscript } from "./projection.js";
 
 type AgentState = "running" | "done" | "error";
 interface AgentCard {

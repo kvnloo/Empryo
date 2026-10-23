@@ -16,6 +16,7 @@ import type { AppConfig } from "../src/types/index.js";
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 const tokens = { input: 0, output: 0, cacheRead: 0 };
+const config = { defaultModel: "loopback/test", defaultForgeMode: "default" } as AppConfig;
 
 function runnerOptions(): RunnerOptions {
   return {
@@ -102,6 +103,9 @@ describe("real producer to native projection", () => {
     } finally {
       release();
     }
+    const seenBeforeDispose = events.length;
+    emitMultiAgentEvent({ parentToolCallId: "parent-A", type: "agent-start", agentId: "late" });
+    expect(events).toHaveLength(seenBeforeDispose);
     expect(events.every((event) => "event" in event && event.event.parentToolCallId === "parent-A")).toBe(true);
     const parent = transcript.project()[1]?.c?.find((n) => n.id === "tool.parent-A");
     expect(parent).toBeDefined();
@@ -125,6 +129,15 @@ describe("native runner failure lifecycle", () => {
     expect(events.some((event) => event.type === "error" && event.error === "invalid embedded model")).toBe(true);
     expect(runner.enqueue("orphan")).toBe(false);
     await runner.close();
+  });
+
+  it("embedded invalid model rejects to its owner rather than exiting the host", async () => {
+    const { runChat } = await import("../src/headless/run.js");
+    await expect(runChat({
+      embedded: true,
+      modelId: "none",
+      readPrompt: async () => null,
+    }, config)).rejects.toThrow("No model configured");
   });
 
   it("does not invoke the engine after close-before-start", async () => {
@@ -178,7 +191,7 @@ describe("native SDK controller and queued ownership", () => {
       };
       return surface;
     }) as typeof tern.open;
-    const app = new NativeApp(tern, {} as AppConfig, (options, emit) => {
+    const app = new NativeApp(tern, config, (options, emit) => {
       optsByTab.push(options);
       return new NativeRunner(options, emit, async (run) => {
         for (;;) {
@@ -242,7 +255,7 @@ describe("native SDK controller and queued ownership", () => {
       surface.render = (view) => { rendered.push(view as typeof rendered[number]); render(view); };
       return surface;
     }) as typeof tern.open;
-    const app = new NativeApp(tern, {} as AppConfig, (opts, emit) => {
+    const app = new NativeApp(tern, config, (opts, emit) => {
       options.push(opts);
       return new NativeRunner(opts, emit, async (run) => {
         await run.readPrompt?.();
@@ -260,7 +273,7 @@ describe("native SDK controller and queued ownership", () => {
       const secondB = options[1]!.onApproveDestructive("Question two");
       await flush();
       let top = rendered.at(-1)?.layer.children[0];
-      expect(top?.children[0]?.children?.[0]?.props?.text ?? top?.children[0]?.props?.text).toBeDefined();
+      expect(top?.props.head).toBe("Destructive operation");
       const staleTop = top?.children.at(-1)?.children.at(-1)?.handlers?.onClick;
       // The destructive prompt is top; deny it, revealing first B prompt.
       const deny = top?.children.at(-1)?.children.at(-1)?.handlers?.onClick;

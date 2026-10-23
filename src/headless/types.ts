@@ -1,5 +1,5 @@
-import type { ForgeMode, InteractiveCallbacks } from "../types/index.js";
 import type { AgentStatsEvent, MultiAgentEvent, SubagentStep } from "../core/agents/subagent-events.js";
+import type { ForgeMode, InteractiveCallbacks } from "../types/index.js";
 
 export interface HeadlessRunOptions {
   prompt: string;

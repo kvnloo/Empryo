@@ -64,8 +64,65 @@ and keyboard input share one guarded draft. Late overlays or
 wrong-tab callbacks cannot approve operations; cancelling and
 closing deny unresolved permissions.
 
-Boundary: the public headless event stream currently lacks rich live
-subagent trees, full diff/media payloads and terminal editor handoff.
-These are subsequent native-parity slices, not features claimed here.
-OpenTUI remains the complete fallback. Empryo v3 integration still
-requires a published maintainer extension point.
+## TRN2 correctness pass: operator validation required
+
+The native SDK composer, send, stop, close and tab controls now have per-tab
+node identities and execution-time tab-instance/epoch guards. Hidden
+background approvals are denied; active-tab prompts form a LIFO modal queue
+with once-only settlement, including usable free-text question answers.
+Plan reviews present the actual plan file, content and steps.
+
+Headless tool-result events keep the legacy 200-character `summary` for
+old JSONL clients while also delivering typed `success`, `error`, and
+untruncated `output`. The live native projection displays real failures as
+errors and keeps the full output. Real core subagent lifecycle, step and
+stats emitters are correlated to the engine's current tool-call ID, projected
+under the parent tool, and unsubscribed at turn completion. Native engine
+setup rejects instead of exiting the host process; unrecoverable errors
+retire active/queued turns and fail closed. `--resume`, `--session`,
+`--wizard`, `--presets`, `--plugin` and all other CLI arguments deliberately
+use the existing OpenTUI boot path; unsupported native resume/history import
+is **not** claimed.
+
+The changes are **not locally executed** in the connector-only worker.
+Previous adapter-only CI does not cover them. OMP must validate the new head:
+
+```sh
+git fetch origin feat/tern-native-preview-port-20261016
+git switch feat/tern-native-preview-port-20261016
+git pull --ff-only
+git rev-parse HEAD
+bun install --frozen-lockfile
+bun run lint
+bun run typecheck
+bun test tests/tern-native.test.ts tests/tern-native-runtime.test.ts tests/tern-native-correctness.test.ts
+bun test
+```
+
+Operator native and fallback checks (configured provider, terminal with TSP):
+
+```sh
+SOULFORGE_TERN=1 TERN_TSP_RECORD=/tmp/empryo-tsp.jsonl bun run dev
+SOULFORGE_TERN=1 TERN_TSP=0 bun run dev
+SOULFORGE_TERN=1 bun run dev --resume EXISTING_SESSION_ID
+```
+
+Replay `/tmp/empryo-tsp.jsonl` with the Tern SDK's `surface-play` tool
+after capturing a live TSP recording. Exercise frame-credit starvation,
+disconnect, multi-tab stale input, overlapping approvals and session reload.
+The repository does not yet contain a credential-free real-provider loopback
+smoke harness or automated recording/replay gate. The new SDK Session tests
+use a memory-backed transport, **not** a live native terminal.
+
+Known baseline issue: the pre-TRN1 full suite previously had six Git
+5000-ms timeouts in `cross-tab-battle.test.ts` (lines 1445, 1461, 1474,
+1517, 1931) and `git-status-parsing.test.ts` (line 311). Do not hide or
+weaken those assertions. Distinguish any still-failing legacy tests from
+new Tern failures.
+
+Outstanding work: offline loopback-provider entry smoke, TSP recording/replay
+and credit starvation in an actual supported host; native saved-session
+history/picker; real terminal editor/media/diff parity. OpenTUI remains
+the complete fallback. Public v3 integration remains contingent on a
+published, maintainer-approved extension seam. Preserve the original Hermes /
+Nous Research and Stencil/Tern MIT provenance and this project's BUSL-1.1.
