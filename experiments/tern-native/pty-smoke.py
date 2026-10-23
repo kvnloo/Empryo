@@ -205,7 +205,7 @@ def live_acceptance(workspace: Path, env: dict[str, str], requests: Path, record
                    "exact complete PTY-byte prompt via real model adapter")
         pane.until(lambda: "SYNTHETIC_ECHO" in str(pane.messages),
                    "streamed synthetic answer on real TSP view")
-        # A *real* Empryo read_file tool runs against workspace/fixture.txt.
+        # A *real* Empryo read tool runs against workspace/fixture.txt.
         pane.send(b"TRN3_READ_FILE\r")
         pane.until(lambda: has_prompt(jsonlines(requests), "TRN3_READ_FILE"),
                    "fixture read request reached provider")
@@ -214,10 +214,10 @@ def live_acceptance(workspace: Path, env: dict[str, str], requests: Path, record
             for row in jsonlines(requests)
         ), "actual tool result reached provider", 30)
         rows = jsonlines(requests)
-        require(any("read_file" in row.get("offeredTools", []) for row in rows),
+        require(any("read" in row.get("offeredTools", []) for row in rows),
                 "the actual Empryo tool definition was not offered")
         require(any("TRN3_OWNED_CONTENT" in json.dumps(row) for row in rows),
-                "the real read_file did not return the owned fixture's bytes")
+                "the real read tool did not return the owned fixture's bytes")
         pane.until(lambda: "SYNTHETIC_READ_DONE" in str(pane.messages),
                    "streamed post-tool synthetic answer")
         # The terminal, not an in-process mock, drops the real surface.
