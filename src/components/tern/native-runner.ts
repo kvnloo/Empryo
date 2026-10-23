@@ -22,7 +22,7 @@ export interface RunnerOptions {
 export type RunChat = (options: HeadlessChatOptions, config: AppConfig) => Promise<void>;
 
 export class NativeRunner {
-  #sessionId = randomUUID();
+  #sessionId: string = randomUUID();
   #queue: string[] = [];
   #waiters: Array<(value: string | null) => void> = [];
   #controller = new AbortController();

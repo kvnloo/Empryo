@@ -128,8 +128,7 @@ export class NativeApp {
           config: this.config,
           callbacks: this.#callbacks(id),
           mode: this.config.defaultForgeMode,
-          onApproveDestructive: (detail) =>
-            this.#approve(id, "Destructive operation", detail),
+          onApproveDestructive: (detail) => this.#approve(id, "Destructive operation", detail),
           onApproveOutsideCwd: (tool, path) =>
             this.#approve(id, "Write outside workspace", tool + ": " + path),
         },
@@ -185,13 +184,18 @@ export class NativeApp {
       onPlanStepUpdate: (stepId: string, status: PlanStepStatus) => {
         this.#notice(tabId, "Plan step " + stepId + ": " + status);
       },
-      onPlanReview: async (plan: Plan, planFile: string, planContent: string): Promise<PlanReviewAction> => {
+      onPlanReview: async (
+        plan: Plan,
+        planFile: string,
+        planContent: string,
+      ): Promise<PlanReviewAction> => {
         const detail = plan.steps.map((step) => "- " + step.label).join("\n");
         return this.#ask(
           tabId,
           "Review plan",
           [plan.title, "Plan file: " + planFile, planContent, "Steps:\n" + detail]
-            .filter(Boolean).join("\n\n"),
+            .filter(Boolean)
+            .join("\n\n"),
           [
             { id: "execute", label: "Execute", value: "execute", tone: "accent" },
             {
@@ -215,7 +219,14 @@ export class NativeApp {
         if (allowSkip) {
           choices.push({ id: "skip", label: "Skip", value: "__skipped__", tone: "neutral" });
         }
-        return this.#ask(tabId, "Question", question, choices, allowSkip ? "__skipped__" : "", options.length === 0);
+        return this.#ask(
+          tabId,
+          "Question",
+          question,
+          choices,
+          allowSkip ? "__skipped__" : "",
+          options.length === 0,
+        );
       },
       onOpenEditor: async (path?: string) => {
         this.#notice(
@@ -327,9 +338,7 @@ export class NativeApp {
                   return;
                 }
                 prompt.answer =
-                  prompt.answer.slice(0, event.from) +
-                  event.text +
-                  prompt.answer.slice(event.to);
+                  prompt.answer.slice(0, event.from) + event.text + prompt.answer.slice(event.to);
                 this.#changed();
               })(),
             send: (event: SendEvent) =>
@@ -445,8 +454,7 @@ export class NativeApp {
       return;
     }
     this.#rememberDraft(draft);
-    draft.text =
-      draft.text.slice(0, event.from) + event.text + draft.text.slice(event.to);
+    draft.text = draft.text.slice(0, event.from) + event.text + draft.text.slice(event.to);
     draft.cursor = Math.max(0, Math.min(draft.text.length, event.cursor));
     draft.revision++;
     this.#changed();
@@ -549,10 +557,7 @@ export class NativeApp {
     const first = text.charCodeAt(cursor - 2);
     return Math.max(
       0,
-      cursor -
-        (last >= 0xdc00 && last <= 0xdfff && first >= 0xd800 && first <= 0xdbff
-          ? 2
-          : 1),
+      cursor - (last >= 0xdc00 && last <= 0xdfff && first >= 0xd800 && first <= 0xdbff ? 2 : 1),
     );
   }
 

@@ -5,7 +5,7 @@
  * Source pattern: NousResearch/hermes-agent ui-tsp/src/entry.ts (MIT),
  * kvnloo/hermes-tern/frontend/src/entry.ts; SDK: @stencil-hq/tern 0.1.0.
  */
-import { connect } from "@stencil-hq/tern";
+import { connect, type Session } from "@stencil-hq/tern";
 import { loadConfig, loadProjectConfig, mergeConfigs } from "../../config/index.js";
 import { getCwd } from "../../core/cwd.js";
 import { CURRENT_VERSION } from "../../core/version.js";
@@ -26,7 +26,7 @@ export async function startNativeTern(): Promise<boolean> {
   // that would exit the process without a configured model.
   if (!config.defaultModel || config.defaultModel === "none") return false;
 
-  let session;
+  let session: Session | null;
   try {
     session = await connect({
       app: "empryo",

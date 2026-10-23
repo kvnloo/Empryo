@@ -4,7 +4,7 @@
  *
  * Tern owns node reconciliation, native events and frame credits.
  */
-import { node, type EditEvent, type Node, type SendEvent } from "@stencil-hq/tern";
+import { type EditEvent, type Node, node, type SendEvent } from "@stencil-hq/tern";
 import type { NativeNode } from "./projection.js";
 
 export interface ViewChoice {
@@ -53,11 +53,7 @@ export interface NativeViewActions {
 }
 
 export function toTernNode(input: NativeNode): Node {
-  return node(
-    input.k,
-    { ...input.p, key: input.id },
-    (input.c ?? []).map(toTernNode),
-  );
+  return node(input.k, { ...input.p, key: input.id }, (input.c ?? []).map(toTernNode));
 }
 
 export function nativeView(state: NativeViewState, actions: NativeViewActions) {

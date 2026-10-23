@@ -82,7 +82,8 @@ async function setupAgent(
 
   const modelId = opts.modelId ?? merged.defaultModel;
   if (!modelId || modelId === "none") {
-    const message = "No model configured. Pass --model provider/model or set defaultModel in config.";
+    const message =
+      "No model configured. Pass --model provider/model or set defaultModel in config.";
     if (opts.embedded) throw new Error(message);
     stderrError(message);
     process.exit(EXIT_ERROR);
@@ -310,7 +311,7 @@ export function headlessToolResult(part: {
   if (typeof value === "string") output = value;
   else {
     try {
-      output = value === undefined ? "" : JSON.stringify(value) ?? String(value);
+      output = value === undefined ? "" : (JSON.stringify(value) ?? String(value));
     } catch {
       output = String(value);
     }
@@ -322,8 +323,7 @@ export function headlessToolResult(part: {
         ? payload.error
         : undefined;
   const summaryValue = error ?? output;
-  const summary =
-    summaryValue.length > 200 ? summaryValue.slice(0, 200) + "…" : summaryValue;
+  const summary = summaryValue.length > 200 ? summaryValue.slice(0, 200) + "…" : summaryValue;
   return {
     type: "tool-result",
     tool: part.toolName,
@@ -390,7 +390,11 @@ async function streamTurn(
   // The actual SDK toolCallId correlates concurrent subagent events to this
   // stream/tab. Never attach an unrelated agent event from another tab.
   const ownedToolCallIds = new Set<string>();
-  const releaseAgentEvents = bridgeSubagentEvents(emit, ownedToolCallIds, reporting.events === true);
+  const releaseAgentEvents = bridgeSubagentEvents(
+    emit,
+    ownedToolCallIds,
+    reporting.events === true,
+  );
   let error: string | undefined;
   let exitCode = EXIT_OK;
 
@@ -457,11 +461,13 @@ async function streamTurn(
         }
       } else if (part.type === "tool-result") {
         if (reporting.events) {
-          emit(headlessToolResult({
-            toolName: part.toolName,
-            toolCallId: (part as { toolCallId?: string }).toolCallId,
-            output: part.output,
-          }));
+          emit(
+            headlessToolResult({
+              toolName: part.toolName,
+              toolCallId: (part as { toolCallId?: string }).toolCallId,
+              output: part.output,
+            }),
+          );
         }
       } else if (part.type === "finish-step") {
         steps++;

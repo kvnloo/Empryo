@@ -164,11 +164,13 @@ export class NativeTranscript {
               collapsed: card.state !== "running" && Boolean(detail),
             },
             c: detail
-              ? [{
-                  id: "agent." + call.id + "." + card.key + ".detail",
-                  k: "text",
-                  p: { role: "omp.tool.output", text: detail },
-                }]
+              ? [
+                  {
+                    id: "agent." + call.id + "." + card.key + ".detail",
+                    k: "text",
+                    p: { role: "omp.tool.output", text: detail },
+                  },
+                ]
               : [],
           });
         }
@@ -210,7 +212,9 @@ export class NativeTranscript {
       event.findingCount !== undefined ? "Findings: " + event.findingCount : "",
       event.resultChars !== undefined ? "Result length: " + event.resultChars + " chars" : "",
       event.toolUses !== undefined ? "Tool uses: " + event.toolUses : "",
-    ].filter(Boolean).join(" · ");
+    ]
+      .filter(Boolean)
+      .join(" · ");
     cards.set(key, {
       key,
       title: (event.agentId ?? "Dispatch") + (event.role ? " (" + event.role + ")" : ""),
@@ -231,11 +235,14 @@ export class NativeTranscript {
       title: (event.agentId ? event.agentId + ": " : "") + event.toolName,
       target: event.args ?? previous?.target,
       state: event.state,
-      detail: [
-        event.cacheState ? "Cache: " + event.cacheState : "",
-        event.sourceAgentId ? "Source: " + event.sourceAgentId : "",
-        event.backend ? "Backend: " + event.backend : "",
-      ].filter(Boolean).join(" · ") || previous?.detail,
+      detail:
+        [
+          event.cacheState ? "Cache: " + event.cacheState : "",
+          event.sourceAgentId ? "Source: " + event.sourceAgentId : "",
+          event.backend ? "Backend: " + event.backend : "",
+        ]
+          .filter(Boolean)
+          .join(" · ") || previous?.detail,
     });
   }
 
@@ -256,7 +263,9 @@ export class NativeTranscript {
         "Tools: " + event.toolUses,
         "Tokens: " + event.tokenUsage.total,
         "Cache hits: " + event.cacheHits,
-      ].filter(Boolean).join(" · "),
+      ]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
 
@@ -352,7 +361,7 @@ export class NativeTranscript {
 
   #finish(output: string, error?: string): void {
     if (this.#active) {
-      if (output && !(this.#active.segments?.some((part) => part.type === "text"))) {
+      if (output && !this.#active.segments?.some((part) => part.type === "text")) {
         this.#text(output);
       }
       this.#active.durationMs = Date.now() - this.#active.timestamp;
