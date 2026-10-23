@@ -38,8 +38,13 @@ function stringContent(content: unknown): string {
 
 function completion(req: ChatRequest): Response {
   const messages = req.messages ?? [];
-  const originalPrompt = [...messages].reverse().find((message) => message.role === "user");
-  const prompt = stringContent(originalPrompt?.content);
+  // Forge may inject a later user-role mode reminder; select the last test
+  // marker so the actual submitted prompt drives the synthetic provider.
+  const prompt = messages
+    .filter((message) => message.role === "user")
+    .map((message) => stringContent(message.content))
+    .filter((text) => text.startsWith("typing ") || text.includes("TRN3_READ_FILE"))
+    .at(-1) ?? "";
   const readFixture = prompt.includes("TRN3_READ_FILE");
   const toolResults = messages.filter((message) => message.role === "tool");
   const readAvailable = req.tools?.some((entry) => entry.function?.name === "read") ?? false;
@@ -90,9 +95,23 @@ function completion(req: ChatRequest): Response {
       index: 0, delta: {}, finish_reason: callTool ? "tool_calls" : "stop",
     }],
   });
-  const wire = chunks.map((chunk) => "data: " + JSON.stringify(chunk) + "\n\n").join("") +
-    "data: [DONE]\n\n";
-  return new Response(wire, {
+  const wire = [
+    ...chunks.map((chunk) => "data: " + JSON.stringify(chunk) + "\\n\\n"),
+    "data: [DONE]\\n\\n",
+  ];
+  let index = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const part = wire[index++];
+      if (!part) {
+        controller.close();
+        return;
+      }
+      if (index > 1) await Bun.sleep(12);
+      controller.enqueue(new TextEncoder().encode(part));
+    },
+  });
+  return new Response(stream, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",
