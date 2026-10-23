@@ -35,6 +35,9 @@ export function run(
       stdio: SAFE_STDIO,
     });
     proc.stdout?.on("data", (d: Buffer) => chunks.push(d.toString()));
+    // Drain stderr even when callers only need stdout: an unconsumed pipe
+    // can fill on Git usage errors and prevent the child from exiting.
+    proc.stderr?.resume();
     proc.on("close", (code) => resolve({ ok: code === 0, stdout: chunks.join("") }));
     proc.on("error", () => resolve({ ok: false, stdout: "" }));
   });
