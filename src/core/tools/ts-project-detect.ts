@@ -1,9 +1,9 @@
 import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const TS_JS_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 
-let _cachedIsTsJs: boolean | null = null;
+const _cachedIsTsJs = new Map<string, boolean>();
 let _nudgedThisSession = false;
 
 export function hasTsJsExtension(path: string): boolean {
@@ -13,22 +13,25 @@ export function hasTsJsExtension(path: string): boolean {
 }
 
 export async function isTsJsProject(cwd: string = process.cwd()): Promise<boolean> {
-  if (_cachedIsTsJs !== null) return _cachedIsTsJs;
+  const root = resolve(cwd);
+  const cached = _cachedIsTsJs.get(root);
+  if (cached !== undefined) return cached;
   const check = async (f: string): Promise<boolean> => {
     try {
-      await access(join(cwd, f));
+      await access(join(root, f));
       return true;
     } catch {
       return false;
     }
   };
-  _cachedIsTsJs =
+  const isProject =
     (await check("package.json")) ||
     (await check("tsconfig.json")) ||
     (await check("bun.lock")) ||
     (await check("bun.lockb")) ||
     (await check("deno.json"));
-  return _cachedIsTsJs;
+  _cachedIsTsJs.set(root, isProject);
+  return isProject;
 }
 
 /**
@@ -45,6 +48,6 @@ export async function consumeAstEditNudge(filePath: string): Promise<string | nu
 
 /** @internal — test hook */
 export function __resetNudgeState(): void {
-  _cachedIsTsJs = null;
+  _cachedIsTsJs.clear();
   _nudgedThisSession = false;
 }
