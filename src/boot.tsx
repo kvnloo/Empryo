@@ -73,6 +73,13 @@ if (hasCli) {
   process.exit(0);
 }
 
+// Negotiate before OpenTUI constructs a renderer or paints its splash.
+// No TSP handshake keeps the existing OpenTUI startup unchanged.
+if (process.env.SOULFORGE_TERN === "1") {
+  const { startNativeTern } = await import("./components/tern/native-entry.js");
+  if (await startNativeTern()) process.exit(0);
+}
+
 // Interactive presets wizard — pre-TUI, uses @clack/prompts.
 if (cliArgs.includes("--presets") || cliArgs[0] === "presets") {
   const { runPresetsWizard } = await import("./core/presets/index.js");
